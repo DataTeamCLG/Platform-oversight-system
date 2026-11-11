@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import unicodedata
 
+
 # ==================================================
 # CONFIG
 # ==================================================
@@ -11,10 +12,11 @@ import unicodedata
 st.set_page_config(
     page_title="Time Control Platform",
     page_icon="⏱️",
-    layout="wide"
+    layout="wide",
 )
 
 MINIMUM_DAILY_HOURS = 8
+
 
 # ==================================================
 # FUNCTIONS
@@ -41,10 +43,12 @@ def build_user_mapping(df_names):
         for col in source_columns:
             source_name = row.get(col)
             if pd.notna(source_name):
-                mappings.append({
-                    "SOURCE_NAME": normalize_name(source_name),
-                    "NAME_CORRECT": correct_name
-                })
+                mappings.append(
+                    {
+                        "SOURCE_NAME": normalize_name(source_name),
+                        "NAME_CORRECT": correct_name,
+                    }
+                )
 
     if len(mappings) == 0:
         return {}
@@ -63,9 +67,9 @@ def convert_duration_to_hours(duration):
 
 def get_novelty_status(user, target_date, df_novelties):
     result = df_novelties[
-        (df_novelties["Persona"] == user) &
-        (df_novelties["Fecha Inicio"] <= target_date) &
-        (df_novelties["Fecha Fin"] >= target_date)
+        (df_novelties["Persona"] == user)
+        & (df_novelties["Fecha Inicio"] <= target_date)
+        & (df_novelties["Fecha Fin"] >= target_date)
     ]
     if len(result) > 0:
         return result.iloc[0]["Tipo de Novedad"]
@@ -73,9 +77,16 @@ def get_novelty_status(user, target_date, df_novelties):
 
 
 @st.cache_data
-def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
-                  novelties_file, clg_novelties_file, start_date, end_date):
-
+def process_files(
+    toggl_file,
+    camplegal_file,
+    smokeball_file,
+    resources_file,
+    novelties_file,
+    clg_novelties_file,
+    start_date,
+    end_date,
+):
     # =========================================
     # READ FILES
     # =========================================
@@ -139,11 +150,8 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
     # =========================================
 
     df_toggl["Date1"] = pd.to_datetime(df_toggl["Date1"], errors="coerce")
-    
     df_camplegal["Date1"] = pd.to_datetime(df_camplegal["Date"], errors="coerce")
-    
     df_smokeball["Date1"] = pd.to_datetime(df_smokeball["Date"], errors="coerce")
-    
 
     # =========================================
     # FILTER DATES
@@ -158,18 +166,15 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
     )
 
     df_toggl = df_toggl[
-        (df_toggl["Date1"] >= start_dt) &
-        (df_toggl["Date1"] <= end_dt)
+        (df_toggl["Date1"] >= start_dt) & (df_toggl["Date1"] <= end_dt)
     ]
 
     df_camplegal = df_camplegal[
-        (df_camplegal["Date1"] >= start_dt) &
-        (df_camplegal["Date1"] <= end_dt)
+        (df_camplegal["Date1"] >= start_dt) & (df_camplegal["Date1"] <= end_dt)
     ]
 
     df_smokeball = df_smokeball[
-        (df_smokeball["Date1"] >= start_dt) &
-        (df_smokeball["Date1"] <= end_dt)
+        (df_smokeball["Date1"] >= start_dt) & (df_smokeball["Date1"] <= end_dt)
     ]
 
     # =========================================
@@ -207,7 +212,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
 
     df_all_time = pd.concat(
         [df_toggl_std, df_camplegal_std, df_smokeball_std],
-        ignore_index=True
+        ignore_index=True,
     )
 
     # =========================================
@@ -215,10 +220,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
     # =========================================
 
     df_all_time["Work_Date"] = (
-        pd.to_datetime(
-            df_all_time["Date1"]
-        )
-        .dt.floor("D")
+        pd.to_datetime(df_all_time["Date1"]).dt.floor("D")
     )
 
     daily_report = (
@@ -243,7 +245,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
         employee_info,
         left_on="USER_CORRECT",
         right_on="NAME CORRECT",
-        how="left"
+        how="left",
     )
 
     # =========================================
@@ -263,7 +265,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
         employee_info,
         left_on="USER_CORRECT",
         right_on="NAME CORRECT",
-        how="left"
+        how="left",
     )
 
     users_summary = users_summary.sort_values("Total_Hours", ascending=False)
@@ -283,6 +285,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
     ]["NAME CORRECT"].dropna().unique()
 
     company_map = dict(zip(df_names["NAME CORRECT"], df_names["COMPANY"]))
+    contract_map = dict(zip(df_names["NAME CORRECT"], df_names["TYPE OF CONTRACT"]))
 
     all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
 
@@ -294,6 +297,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
         for user in active_users:
             normalized_user = normalize_name(user)
             user_company = str(company_map.get(user, "")).upper().strip()
+            user_contract = normalize_name(contract_map.get(user, ""))
             required_hours = 0
             holiday_assignments = pd.DataFrame()
 
@@ -301,9 +305,9 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
             # VERIFICAR SI EL USUARIO ESTÁ EN FESTIVO (NO TRABAJA)
             # =========================================
             holiday_user = df_special_days[
-                (df_special_days["PERSONA_NORMALIZADA"] == normalized_user) &
-                (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO") &
-                (df_special_days["Fecha"].dt.date == current_day.date())
+                (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
+                & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
+                & (df_special_days["Fecha"].dt.date == current_day.date())
             ]
 
             if len(holiday_user) > 0:
@@ -313,18 +317,18 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
             # VERIFICAR DÍA FESTIVO (PARA TODOS)
             # =========================================
             holiday_assignments = df_special_days[
-                (df_special_days["PERSONA_NORMALIZADA"] == "TODOS") &
-                (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO") &
-                (df_special_days["Fecha"].dt.date == current_day.date())
+                (df_special_days["PERSONA_NORMALIZADA"] == "TODOS")
+                & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
+                & (df_special_days["Fecha"].dt.date == current_day.date())
             ]
 
             is_holiday = len(holiday_assignments) > 0
 
             if is_holiday:
                 holiday_worker = df_special_days[
-                    (df_special_days["PERSONA_NORMALIZADA"] == normalized_user) &
-                    (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO_PROGRAMADO") &
-                    (df_special_days["Fecha"].dt.date == current_day.date())
+                    (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
+                    & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO_PROGRAMADO")
+                    & (df_special_days["Fecha"].dt.date == current_day.date())
                 ]
                 if len(holiday_worker) > 0:
                     required_hours = 8
@@ -343,8 +347,8 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
                 elif weekday == 5:
                     if user_company == "MAX":
                         saturday_user = df_special_days[
-                            (df_special_days["PERSONA_NORMALIZADA"] == normalized_user) &
-                            (df_special_days["Fecha"].dt.date == current_day.date())
+                            (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
+                            & (df_special_days["Fecha"].dt.date == current_day.date())
                         ]
                         if len(saturday_user) > 0:
                             required_hours = 4
@@ -353,9 +357,9 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
 
                     elif user_company == "CLG":
                         clg_saturday_user = df_clg_special_days[
-                            (df_clg_special_days["PERSONA_NORMALIZADA"] == normalized_user) &
-                            (df_clg_special_days["TIPO_NORMALIZADO"] == "SABADO") &
-                            (df_clg_special_days["Fecha"].dt.date == current_day.date())
+                            (df_clg_special_days["PERSONA_NORMALIZADA"] == normalized_user)
+                            & (df_clg_special_days["TIPO_NORMALIZADO"] == "SABADO")
+                            & (df_clg_special_days["Fecha"].dt.date == current_day.date())
                         ]
                         if len(clg_saturday_user) > 0:
                             required_hours = 8
@@ -371,6 +375,12 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
                     required_hours = 0
 
             # =========================================
+            # PRESTACIÓN DE SERVICIO
+            # =========================================
+
+            is_service_contract = "PRESTACION" in user_contract
+
+            # =========================================
             # SI NO HAY HORAS REQUERIDAS, SALTAR
             # =========================================
             if required_hours == 0:
@@ -380,8 +390,8 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
             # OBTENER HORAS TRABAJADAS
             # =========================================
             day_record = daily_report[
-                (daily_report["USER_CORRECT"] == user) &
-                (daily_report["Work_Date"].dt.date == current_day.date())
+                (daily_report["USER_CORRECT"] == user)
+                & (daily_report["Work_Date"].dt.date == current_day.date())
             ]
 
             worked_hours = 0.0
@@ -395,9 +405,9 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
 
             if novelty is None and user_company == "CLG":
                 clg_novelty = df_clg_novelties[
-                    (df_clg_novelties["PERSONA_NORMALIZADA"] == normalized_user) &
-                    (current_day >= df_clg_novelties["Fecha Inicio"]) &
-                    (current_day <= df_clg_novelties["Fecha Fin"])
+                    (df_clg_novelties["PERSONA_NORMALIZADA"] == normalized_user)
+                    & (current_day >= df_clg_novelties["Fecha Inicio"])
+                    & (current_day <= df_clg_novelties["Fecha Fin"])
                 ]
                 if len(clg_novelty) > 0:
                     novelty = str(clg_novelty.iloc[0]["Tipo de Novedad"])
@@ -405,7 +415,9 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
             # =========================================
             # LÓGICA DE STATUS
             # =========================================
-            if novelty is not None:
+            if is_service_contract:
+                status = "🟣 Prestación de servicio"
+            elif novelty is not None:
                 status = f"🟡 {novelty}"
             elif worked_hours == 0:
                 status = "❌ No registró tiempo"
@@ -419,17 +431,19 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
             else:
                 status = "✅ Cumple"
 
-            compliance_records.append({
-                "Date": current_day.date(),
-                "Weekday": weekday,
-                "User": user,
-                "Hours Worked": round(worked_hours, 2),
-                "Hours Required": required_hours,
-                "Novelty": novelty,
-                "Status": status,
-                "Holiday Count": len(holiday_assignments),
-                "Current Day": current_day.date()
-            })
+            compliance_records.append(
+                {
+                    "Date": current_day.date(),
+                    "Weekday": weekday,
+                    "User": user,
+                    "Hours Worked": round(worked_hours, 2),
+                    "Hours Required": required_hours,
+                    "Novelty": novelty,
+                    "Status": status,
+                    "Holiday Count": len(holiday_assignments),
+                    "Current Day": current_day.date(),
+                }
+            )
 
     compliance_engine = pd.DataFrame(compliance_records)
 
@@ -438,23 +452,26 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
         .groupby("User")
         .agg(
             Total_Hours=("Hours Worked", "sum"),
-            Days_Evaluated=("Date", "count")
+            Days_Evaluated=("Date", "count"),
         )
         .reset_index()
     )
 
     success_counts = (
-        compliance_engine[compliance_engine["Status"] == "✅ Cumple"]
+        compliance_engine[
+            compliance_engine["Status"].isin(
+                ["✅ Cumple", "🟣 Prestación de servicio"]
+            )
+        ]
         .groupby("User")
         .size()
     )
 
     failure_counts = (
         compliance_engine[
-            compliance_engine["Status"].isin([
-                "❌ No registró tiempo",
-                "❌ Horas insuficientes"
-            ])
+            compliance_engine["Status"].isin(
+                ["❌ No registró tiempo", "❌ Horas insuficientes"]
+            )
         ]
         .groupby("User")
         .size()
@@ -485,10 +502,12 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
         .sort_values("Date")
         .groupby("User")
         .apply(
-            lambda df: " | ".join([
-                f"{d.strftime('%m/%d')} {s}"
-                for d, s in zip(df["Date"], df["Status"])
-            ])
+            lambda df: " | ".join(
+                [
+                    f"{d.strftime('%m/%d')} {s}"
+                    for d, s in zip(df["Date"], df["Status"])
+                ]
+            )
         )
     )
 
@@ -499,10 +518,9 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
     # Calcular Failed_Dates para cada usuario
     failed_dates = (
         compliance_engine[
-            compliance_engine["Status"].isin([
-                "❌ No registró tiempo",
-                "❌ Horas insuficientes"
-            ])
+            compliance_engine["Status"].isin(
+                ["❌ No registró tiempo", "❌ Horas insuficientes"]
+            )
         ]
         .groupby("User")["Date"]
         .apply(lambda dates: ", ".join(d.strftime("%m/%d") for d in dates))
@@ -521,6 +539,7 @@ def process_files(toggl_file, camplegal_file, smokeball_file, resources_file,
 
 st.title("⏱️ Time Control Platform")
 st.markdown("### Final Phase - Toggl - Camp Legal - Smokeball Validation")
+
 
 # ==================================================
 # SIDEBAR
@@ -541,20 +560,20 @@ st.sidebar.divider()
 start_date = st.sidebar.date_input("Start Date")
 end_date = st.sidebar.date_input("End Date")
 
+
 # ==================================================
 # PROCESS
 # ==================================================
 
 if (
-    resources_file and
-    toggl_file and
-    novelties_file and
-    camplegal_file and
-    smokeball_file and
-    clg_novelties_file and
-    attendance_file
+    resources_file
+    and toggl_file
+    and novelties_file
+    and camplegal_file
+    and smokeball_file
+    and clg_novelties_file
+    and attendance_file
 ):
-
     daily_report, detail_report, users_summary, compliance_engine, compliance_summary = process_files(
         toggl_file,
         camplegal_file,
@@ -563,7 +582,7 @@ if (
         novelties_file,
         clg_novelties_file,
         start_date,
-        end_date
+        end_date,
     )
 
     attendance_comparison = pd.DataFrame()
@@ -573,64 +592,33 @@ if (
         df_adp = pd.read_excel(attendance_file, sheet_name="NewADP", engine="openpyxl")
 
         attendance_uatt = (
-            df_uatt[
-                [
-                    "DATE",
-                    "Corrected Name",
-                    "Hours worked"
-                ]
-            ]
-            .copy()
+            df_uatt[["DATE", "Corrected Name", "Hours worked"]].copy()
         )
 
-        attendance_uatt.columns = [
-            "Date",
-            "User",
-            "Attendance_Hours"
-        ]
+        attendance_uatt.columns = ["Date", "User", "Attendance_Hours"]
 
         attendance_adp = (
-            df_adp[
-                [
-                    "Date",
-                    "Corrected Name",
-                    "Hours worked"
-                ]
-            ]
-            .copy()
+            df_adp[["Date", "Corrected Name", "Hours worked"]].copy()
         )
 
-        attendance_adp.columns = [
-            "Date",
-            "User",
-            "Attendance_Hours"
-        ]
+        attendance_adp.columns = ["Date", "User", "Attendance_Hours"]
 
         attendance_all = pd.concat(
-            [
-                attendance_uatt,
-                attendance_adp
-            ],
-            ignore_index=True
+            [attendance_uatt, attendance_adp],
+            ignore_index=True,
         )
 
         attendance_all["Date"] = (
-            pd.to_datetime(
-                attendance_all["Date"],
-                errors="coerce"
-            )
-            .dt.floor("D")
+            pd.to_datetime(attendance_all["Date"], errors="coerce").dt.floor("D")
         )
 
         attendance_all["Attendance_Hours"] = pd.to_numeric(
-            attendance_all["Attendance_Hours"],
-            errors="coerce"
+            attendance_all["Attendance_Hours"], errors="coerce"
         ).fillna(0)
 
         attendance_all = attendance_all[
             (attendance_all["Date"] >= pd.to_datetime(start_date))
-            &
-            (
+            & (
                 attendance_all["Date"]
                 <= (
                     pd.to_datetime(end_date)
@@ -641,83 +629,52 @@ if (
         ]
 
         platform_hours = (
-            daily_report[
-                [
-                    "Work_Date",
-                    "USER_CORRECT",
-                    "Total_Hours"
-                ]
-            ]
-            .copy()
+            daily_report[["Work_Date", "USER_CORRECT", "Total_Hours"]].copy()
         )
 
         platform_hours["Date"] = (
-            pd.to_datetime(
-                platform_hours["Work_Date"]
-            )
-            .dt.floor("D")
+            pd.to_datetime(platform_hours["Work_Date"]).dt.floor("D")
         )
 
         platform_hours = (
-            platform_hours[
-                [
-                    "Date",
-                    "USER_CORRECT",
-                    "Total_Hours"
-                ]
-            ]
+            platform_hours[["Date", "USER_CORRECT", "Total_Hours"]]
             .rename(
                 columns={
                     "USER_CORRECT": "User",
-                    "Total_Hours": "Platform_Hours"
+                    "Total_Hours": "Platform_Hours",
                 }
             )
         )
 
-        attendance_all["User"] = (
-            attendance_all["User"]
-            .apply(normalize_name)
-        )
-
-        platform_hours["User"] = (
-            platform_hours["User"]
-            .apply(normalize_name)
-        )
+        attendance_all["User"] = attendance_all["User"].apply(normalize_name)
+        platform_hours["User"] = platform_hours["User"].apply(normalize_name)
 
         attendance_comparison = attendance_all.merge(
             platform_hours,
-            on=[
-                "Date",
-                "User"
-            ],
-            how="left"
+            on=["Date", "User"],
+            how="left",
         )
 
         attendance_comparison["Platform_Hours"] = (
-            attendance_comparison["Platform_Hours"]
-            .fillna(0)
+            attendance_comparison["Platform_Hours"].fillna(0)
         )
 
         attendance_comparison["Difference_Hours"] = (
             attendance_comparison["Platform_Hours"]
-            -
-            attendance_comparison["Attendance_Hours"]
+            - attendance_comparison["Attendance_Hours"]
         )
 
         attendance_comparison["Difference_Pct"] = (
             attendance_comparison["Difference_Hours"]
             .abs()
-            .div(
-                attendance_comparison["Attendance_Hours"]
-                .replace(0, np.nan)
-            )
+            .div(attendance_comparison["Attendance_Hours"].replace(0, np.nan))
             * 100
         )
 
         attendance_comparison["Status"] = np.where(
             attendance_comparison["Difference_Pct"] <= 10,
             "✅ Match",
-            "🚨 Review"
+            "🚨 Review",
         )
 
     total_users = users_summary["USER_CORRECT"].nunique()
@@ -731,10 +688,9 @@ if (
 
     non_compliant_days = len(
         compliance_engine[
-            compliance_engine["Status"].isin([
-                "❌ No registró tiempo",
-                "❌ Horas insuficientes"
-            ])
+            compliance_engine["Status"].isin(
+                ["❌ No registró tiempo", "❌ Horas insuficientes"]
+            )
         ]
     )
 
@@ -748,10 +704,9 @@ if (
 
     total_non_compliance = len(
         compliance_engine[
-            compliance_engine["Status"].isin([
-                "❌ No registró tiempo",
-                "❌ Horas insuficientes"
-            ])
+            compliance_engine["Status"].isin(
+                ["❌ No registró tiempo", "❌ Horas insuficientes"]
+            )
         ]
     )
 
@@ -766,13 +721,15 @@ if (
     # TABS
     # =====================================
 
-    tab1, tab2, tab3, tab4, tab5, = st.tabs([
-        "🚨 Compliance Engine",
-        "📋 Activity Detail",
-        "👥 Users Summary",
-        "📊 Compliance Summary",
-        "🕒 Attendance Match"
-    ])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        [
+            "🚨 Compliance Engine",
+            "📋 Activity Detail",
+            "👥 Users Summary",
+            "📊 Compliance Summary",
+            "🕒 Attendance Match",
+        ]
+    )
 
     # =====================================
     # TAB 1 - COMPLIANCE ENGINE
@@ -783,13 +740,15 @@ if (
 
         compliance_filter = st.selectbox(
             "Compliance Status",
-            ["All", "✅ Cumple", "❌ No registró tiempo", "❌ Horas insuficientes"]
+            ["All", "✅ Cumple", "❌ No registró tiempo", "❌ Horas insuficientes"],
         )
 
-        compliance_users = sorted(compliance_engine["User"].dropna().unique().tolist())
+        compliance_users = sorted(
+            compliance_engine["User"].dropna().unique().tolist()
+        )
         selected_compliance_user = st.selectbox(
             "Search User",
-            ["All Users"] + compliance_users
+            ["All Users"] + compliance_users,
         )
 
         engine = compliance_engine.copy()
@@ -802,7 +761,7 @@ if (
 
         st.dataframe(
             engine[["Date", "User", "Hours Worked", "Novelty", "Status"]],
-            use_container_width=True
+            use_container_width=True,
         )
 
     # =====================================
@@ -813,26 +772,21 @@ if (
         st.subheader("Activity Detail")
 
         users_list = sorted(
-            detail_report["USER_CORRECT"]
-            .dropna()
-            .unique()
-            .tolist()
+            detail_report["USER_CORRECT"].dropna().unique().tolist()
         )
 
         selected_user = st.selectbox(
             "Search User",
-            ["All Users"] + users_list
+            ["All Users"] + users_list,
         )
 
         detail_view = detail_report.copy()
         if selected_user != "All Users":
-            detail_view = detail_view[
-                detail_view["USER_CORRECT"] == selected_user
-            ]
+            detail_view = detail_view[detail_view["USER_CORRECT"] == selected_user]
 
         st.dataframe(
             detail_view[["Date1", "USER_CORRECT", "Activity", "Hours", "Source"]],
-            use_container_width=True
+            use_container_width=True,
         )
 
     # =====================================
@@ -842,22 +796,24 @@ if (
     with tab3:
         st.subheader("Total Hours by User")
         st.dataframe(
-            users_summary[[
-                "USER_CORRECT",
-                "COMPANY",
-                "DEPARTMENT",
-                "TEAM",
-                "Entries",
-                "Total_Hours"
-            ]],
-            use_container_width=True
+            users_summary[
+                [
+                    "USER_CORRECT",
+                    "COMPANY",
+                    "DEPARTMENT",
+                    "TEAM",
+                    "Entries",
+                    "Total_Hours",
+                ]
+            ],
+            use_container_width=True,
         )
 
         fig_users = px.bar(
             users_summary.head(25),
             x="USER_CORRECT",
             y="Total_Hours",
-            title="Top Users by Hours"
+            title="Top Users by Hours",
         )
         st.plotly_chart(fig_users, use_container_width=True)
 
@@ -872,7 +828,7 @@ if (
         summary_users = sorted(summary_view["User"].dropna().unique().tolist())
         selected_summary_user = st.selectbox(
             "Search User (Summary)",
-            ["All Users"] + summary_users
+            ["All Users"] + summary_users,
         )
 
         if selected_summary_user != "All Users":
@@ -894,14 +850,10 @@ if (
 
                 with cols[j]:
                     card_background = (
-                        "#e8f5e9"
-                        if non_compliant == 0
-                        else "#fdeaea"
+                        "#e8f5e9" if non_compliant == 0 else "#fdeaea"
                     )
                     card_border = (
-                        "#2e7d32"
-                        if non_compliant == 0
-                        else "#d32f2f"
+                        "#2e7d32" if non_compliant == 0 else "#d32f2f"
                     )
 
                     st.markdown(
@@ -924,7 +876,7 @@ if (
                             {row['Failed_Dates']}
                         </div>
                         """,
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
     # =====================================
@@ -944,15 +896,13 @@ if (
                         "Platform_Hours",
                         "Difference_Hours",
                         "Difference_Pct",
-                        "Status"
+                        "Status",
                     ]
                 ],
-                use_container_width=True
+                use_container_width=True,
             )
         else:
-            st.info(
-                "Upload ADP & UAttend file to enable comparison."
-            )
+            st.info("Upload ADP & UAttend file to enable comparison.")
 
     # =====================================
     # NON COMPLIANCE
@@ -962,16 +912,15 @@ if (
     st.subheader("🚨 Non Compliant Records")
 
     non_compliance = compliance_engine[
-        compliance_engine["Status"].isin([
-            "❌ No registró tiempo",
-            "❌ Horas insuficientes"
-        ])
+        compliance_engine["Status"].isin(
+            ["❌ No registró tiempo", "❌ Horas insuficientes"]
+        )
     ]
 
     if len(non_compliance) > 0:
         st.dataframe(
             non_compliance[["Date", "User", "Hours Worked", "Status"]],
-            use_container_width=True
+            use_container_width=True,
         )
     else:
         st.success("🎉 No non-compliant records found!")
