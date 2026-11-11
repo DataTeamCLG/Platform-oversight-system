@@ -530,7 +530,7 @@ def process_files(
         compliance_summary["User"].map(failed_dates).fillna("Ninguna")
     )
 
-    return daily_report, detail_report, users_summary, compliance_engine, compliance_summary
+    return daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info
 
 
 # ==================================================
@@ -574,7 +574,7 @@ if (
     and clg_novelties_file
     and attendance_file
 ):
-    daily_report, detail_report, users_summary, compliance_engine, compliance_summary = process_files(
+    daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info = process_files(
         toggl_file,
         camplegal_file,
         smokeball_file,
@@ -743,6 +743,12 @@ if (
         .reset_index()
     )
 
+    notification_queue = notification_queue.merge(
+        employee_info,
+        left_on="User",
+        right_on="NAME CORRECT",
+        how="left",
+    )
 
     # =====================================
     # TABS
@@ -964,12 +970,11 @@ if (
                     [
                         "User",
                         "Incidents",
+                        "EMAIL",
                     ]
                 ],
                 use_container_width=True,
             )
-
-   
 
     # =====================================
     # NON COMPLIANCE TABLE
