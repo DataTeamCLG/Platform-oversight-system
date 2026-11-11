@@ -718,6 +718,36 @@ if (
     c5.metric("⏱️ Total Hours", total_hours)
 
     # =====================================
+    # NON COMPLIANCE
+    # =====================================
+
+    non_compliance = compliance_engine[
+        compliance_engine["Status"].isin(
+            ["❌ No registró tiempo", "❌ Horas insuficientes"]
+        )
+    ]
+
+    # =====================================
+    # NOTIFICATION QUEUE
+    # =====================================
+
+    notification_queue = (
+        non_compliance
+        .groupby("User")
+        .agg(
+            Incidents=("Date", "count")
+        )
+        .reset_index()
+    )
+
+    notification_queue = notification_queue.merge(
+        employee_info,
+        left_on="User",
+        right_on="NAME CORRECT",
+        how="left",
+    )
+
+    # =====================================
     # TABS
     # =====================================
 
@@ -943,43 +973,12 @@ if (
                 use_container_width=True,
             )
 
-
     # =====================================
-    # NON COMPLIANCE
+    # NON COMPLIANCE TABLE
     # =====================================
 
     st.divider()
     st.subheader("🚨 Non Compliant Records")
-
-    non_compliance = compliance_engine[
-        compliance_engine["Status"].isin(
-            ["❌ No registró tiempo", "❌ Horas insuficientes"]
-        )
-    ]
-
-    # =====================================
-    # NOTIFICATION QUEUE
-    # =====================================
-
-    notification_queue = (
-        non_compliance
-        .groupby("User")
-        .agg(
-            Incidents=("Date", "count")
-        )
-        .reset_index()
-    )
-
-    notification_queue = notification_queue.merge(
-        employee_info,
-        left_on="User",
-        right_on="NAME CORRECT",
-        how="left",
-    )
-
-    # =====================================
-    # NON COMPLIANCE TABLE
-    # =====================================
 
     if len(non_compliance) > 0:
         st.dataframe(
