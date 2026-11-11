@@ -971,9 +971,6 @@ if (
                         "User",
                         "Incidents",
                         "EMAIL",
-                        "COPY_EMAIL_SB",
-                        "COPY_EMAIL_TG",
-                        "COPY_EMAIL_CL",
                     ]
                 ],
                 use_container_width=True,
