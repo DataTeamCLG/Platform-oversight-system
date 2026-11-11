@@ -237,7 +237,7 @@ def process_files(
     # =========================================
 
     employee_info = (
-        df_names[["NAME CORRECT", "COMPANY", "DEPARTMENT", "TEAM"]]
+        df_names[["NAME CORRECT", "COMPANY", "DEPARTMENT", "TEAM", "EMAIL"]]
         .drop_duplicates(subset=["NAME CORRECT"])
     )
 
@@ -721,13 +721,14 @@ if (
     # TABS
     # =====================================
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "🚨 Compliance Engine",
             "📋 Activity Detail",
             "👥 Users Summary",
             "📊 Compliance Summary",
             "🕒 Attendance Match",
+            "📧 Notifications Center",
         ]
     )
 
@@ -916,6 +917,71 @@ if (
             ["❌ No registró tiempo", "❌ Horas insuficientes"]
         )
     ]
+
+    # =====================================
+    # NOTIFICATION QUEUE
+    # =====================================
+
+    notification_queue = (
+        non_compliance
+        .groupby("User")
+        .agg(
+            Incidents=("Date", "count")
+        )
+        .reset_index()
+    )
+
+    notification_queue = notification_queue.merge(
+        employee_info,
+        left_on="User",
+        right_on="NAME CORRECT",
+        how="left",
+    )
+
+    # =====================================
+    # TAB 6 - NOTIFICATIONS CENTER
+    # =====================================
+
+    with tab6:
+        st.subheader("📧 Notifications Center")
+
+        if len(notification_queue) == 0:
+            st.success("🎉 No users require notifications.")
+
+        else:
+            excluded_users = st.multiselect(
+                "Exclude users from notifications",
+                sorted(
+                    notification_queue["User"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                ),
+            )
+
+            notification_view = (
+                notification_queue[
+                    ~notification_queue["User"].isin(excluded_users)
+                ]
+            )
+
+            st.dataframe(
+                notification_view[
+                    [
+                        "User",
+                        "Incidents",
+                        "EMAIL",
+                        "COPY_EMAIL_SB",
+                        "COPY_EMAIL_TG",
+                        "COPY_EMAIL_CL",
+                    ]
+                ],
+                use_container_width=True,
+            )
+
+    # =====================================
+    # NON COMPLIANCE TABLE
+    # =====================================
 
     if len(non_compliance) > 0:
         st.dataframe(
