@@ -743,12 +743,6 @@ if (
         .reset_index()
     )
 
-    notification_queue = notification_queue.merge(
-        employee_info,
-        left_on="User",
-        right_on="NAME CORRECT",
-        how="left",
-    )
 
     # =====================================
     # TABS
@@ -970,7 +964,6 @@ if (
                     [
                         "User",
                         "Incidents",
-                        "EMAIL",
                     ]
                 ],
                 use_container_width=True,
