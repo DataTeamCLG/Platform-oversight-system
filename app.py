@@ -3,6 +3,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import unicodedata
+import smtplib
+
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 # ==================================================
@@ -21,6 +25,36 @@ MINIMUM_DAILY_HOURS = 8
 # ==================================================
 # FUNCTIONS
 # ==================================================
+
+def send_test_email(recipient, subject, body):
+    try:
+        smtp_server = st.secrets["SMTP_SERVER"]
+        smtp_port = int(st.secrets["SMTP_PORT"])
+
+        smtp_user = st.secrets["SMTP_USER"]
+        smtp_password = st.secrets["SMTP_PASSWORD"]
+
+        msg = MIMEMultipart()
+
+        msg["From"] = smtp_user
+        msg["To"] = recipient
+        msg["Subject"] = subject
+
+        msg.attach(
+            MIMEText(body, "plain")
+        )
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+        server.quit()
+
+        return True, "Email sent successfully"
+
+    except Exception as e:
+        return False, str(e)
+
 
 def normalize_name(text):
     if pd.isna(text):
@@ -1085,6 +1119,20 @@ Time Control Platform
                 value=body,
                 height=250
             )
+
+            st.divider()
+
+            if st.button("🧪 Send Test Email"):
+                success, message = send_test_email(
+                    recipient="data.analyst7@communitylawgroup.com",
+                    subject=subject,
+                    body=body
+                )
+
+                if success:
+                    st.success("✅ Test email sent successfully.")
+                else:
+                    st.error(f"❌ SMTP Error: {message}")
 
     # =====================================
     # NON COMPLIANCE TABLE
