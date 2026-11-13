@@ -711,6 +711,43 @@ if (
             "🚨 Review",
         )
 
+        attendance_comparison["Justified"] = "NO"
+
+        justified_records = compliance_engine[
+            compliance_engine["Status"]
+            .astype(str)
+            .str.startswith("🟡")
+        ].copy()
+
+        justified_records = justified_records[
+            [
+                "Date",
+                "User"
+            ]
+        ].drop_duplicates()
+
+        attendance_comparison = attendance_comparison.merge(
+            justified_records.assign(Justified="YES"),
+            on=[
+                "Date",
+                "User"
+            ],
+            how="left",
+            suffixes=("", "_RRHH")
+        )
+
+        attendance_comparison["Justified"] = np.where(
+            attendance_comparison["Justified_RRHH"] == "YES",
+            "YES",
+            "NO"
+        )
+
+        attendance_comparison.drop(
+            columns=["Justified_RRHH"],
+            inplace=True,
+            errors="ignore"
+        )
+
     total_users = users_summary["USER_CORRECT"].nunique()
 
     # =========================================
@@ -765,7 +802,13 @@ if (
     ]
 
     attendance_issues = attendance_comparison[
-        attendance_comparison["Status"] == "🚨 Review"
+        (
+            attendance_comparison["Status"] == "🚨 Review"
+        )
+        &
+        (
+            attendance_comparison["Justified"] == "NO"
+        )
     ].copy()
 
     attendance_issues["Incident_Type"] = (
@@ -1017,6 +1060,7 @@ if (
                         "Difference_Hours",
                         "Difference_Pct",
                         "Status",
+                        "Justified"
                     ]
                 ],
                 use_container_width=True,
