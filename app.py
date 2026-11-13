@@ -767,13 +767,61 @@ if (
     attendance_issues = attendance_comparison[
         attendance_comparison["Status"] == "🚨 Review"
     ].copy()
-    
+
+    attendance_issues["Incident_Type"] = (
+        "🚨 Attendance Mismatch"
+    )
+
+    attendance_issues = attendance_issues.rename(
+        columns={
+            "Status": "Incident_Status"
+        }
+    )
+
+    attendance_issues = attendance_issues[
+        [
+            "Date",
+            "User",
+            "Incident_Type",
+            "Incident_Status"
+        ]
+    ]
+
+    compliance_issues = non_compliance.copy()
+
+    compliance_issues["Incident_Type"] = (
+        "🚨 Compliance Issue"
+    )
+
+    compliance_issues = compliance_issues.rename(
+        columns={
+            "Status": "Incident_Status"
+        }
+    )
+
+    compliance_issues = compliance_issues[
+        [
+            "Date",
+            "User",
+            "Incident_Type",
+            "Incident_Status"
+        ]
+    ]
+
+    all_incidents = pd.concat(
+        [
+            compliance_issues,
+            attendance_issues
+        ],
+        ignore_index=True
+    )
+
     # =====================================
     # NOTIFICATION QUEUE
     # =====================================
 
     notification_queue = (
-        non_compliance
+        all_incidents
         .groupby("User")
         .agg(
             Incidents=("Date", "count")
@@ -1054,13 +1102,13 @@ if (
 
             cc_list = sorted(list(set(cc_list)))
 
-            user_incidents = non_compliance[
-                non_compliance["User"] == selected_notification_user
+            user_incidents = all_incidents[
+                all_incidents["User"] == selected_notification_user
             ].sort_values("Date")
 
             incident_text = "\n".join(
                 [
-                    f"- {row['Date']} | {row['Status']}"
+                    f"- {row['Date']} | {row['Incident_Type']} | {row['Incident_Status']}"
                     for _, row in user_incidents.iterrows()
                 ]
             )
