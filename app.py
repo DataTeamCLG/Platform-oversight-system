@@ -726,6 +726,16 @@ if (
             ]
         ].drop_duplicates()
 
+        justified_records["Date"] = pd.to_datetime(
+            justified_records["Date"],
+            errors="coerce"
+        ).dt.floor("D")
+
+        attendance_comparison["Date"] = pd.to_datetime(
+            attendance_comparison["Date"],
+            errors="coerce"
+        ).dt.floor("D")
+
         attendance_comparison = attendance_comparison.merge(
             justified_records.assign(Justified="YES"),
             on=[
