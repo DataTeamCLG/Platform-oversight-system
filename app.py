@@ -237,7 +237,7 @@ def process_files(
     # =========================================
 
     employee_info = (
-        df_names[["NAME CORRECT", "COMPANY", "DEPARTMENT", "TEAM", "EMAIL"]]
+        df_names[["NAME CORRECT", "COMPANY", "DEPARTMENT", "TEAM", "EMAIL", "COPY_EMAIL_SB", "COPY_EMAIL_TG", "COPY_EMAIL_CL"]]
         .drop_duplicates(subset=["NAME CORRECT"])
     )
 
@@ -974,6 +974,94 @@ if (
                     ]
                 ],
                 use_container_width=True,
+            )
+
+            st.divider()
+
+            selected_notification_user = st.selectbox(
+                "Preview Email",
+                sorted(
+                    notification_view["User"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+            )
+
+            preview_record = notification_view[
+                notification_view["User"] == selected_notification_user
+            ].iloc[0]
+
+            cc_list = []
+
+            for col in [
+                "COPY_EMAIL_SB",
+                "COPY_EMAIL_TG",
+                "COPY_EMAIL_CL"
+            ]:
+                value = preview_record.get(col)
+
+                if pd.notna(value):
+                    value = str(value).strip()
+
+                    if value != "":
+                        cc_list.append(value)
+
+            cc_list = sorted(list(set(cc_list)))
+
+            user_incidents = non_compliance[
+                non_compliance["User"] == selected_notification_user
+            ].sort_values("Date")
+
+            incident_text = "\n".join(
+                [
+                    f"- {row['Date']} | {row['Status']}"
+                    for _, row in user_incidents.iterrows()
+                ]
+            )
+
+            subject = (
+                "Time Control Platform - Non Compliance Alert"
+            )
+
+            body = f"""
+Hello {selected_notification_user},
+
+The Time Control Platform identified the following compliance incidents:
+
+{incident_text}
+
+Please review your time records and make any necessary corrections.
+
+Regards,
+Time Control Platform
+"""
+
+            st.markdown("### Email Preview")
+
+            st.text_input(
+                "TO",
+                value=preview_record["EMAIL"],
+                disabled=True
+            )
+
+            st.text_area(
+                "CC",
+                value="; ".join(cc_list),
+                height=80,
+                disabled=True
+            )
+
+            st.text_input(
+                "SUBJECT",
+                value=subject,
+                disabled=True
+            )
+
+            st.text_area(
+                "BODY",
+                value=body,
+                height=250
             )
 
     # =====================================
