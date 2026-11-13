@@ -680,13 +680,44 @@ if (
             )
         )
 
-        attendance_all["User"] = attendance_all["User"].apply(normalize_name)
-        platform_hours["User"] = platform_hours["User"].apply(normalize_name)
+        attendance_all["NORMALIZED_USER"] = (
+            attendance_all["User"]
+            .astype(str)
+            .apply(normalize_name)
+        )
+
+        attendance_all["USER_CORRECT"] = (
+            attendance_all["NORMALIZED_USER"]
+            .map(user_map)
+            .fillna(attendance_all["User"])
+        )
+
+        platform_hours["NORMALIZED_USER"] = (
+            platform_hours["User"]
+            .astype(str)
+            .apply(normalize_name)
+        )
+
+        platform_hours["USER_CORRECT"] = (
+            platform_hours["NORMALIZED_USER"]
+            .map(user_map)
+            .fillna(platform_hours["User"])
+        )
 
         attendance_comparison = attendance_all.merge(
             platform_hours,
-            on=["Date", "User"],
+            on=[
+                "Date",
+                "USER_CORRECT"
+            ],
             how="left",
+        )
+
+        attendance_comparison.rename(
+            columns={
+                "USER_CORRECT": "User"
+            },
+            inplace=True
         )
 
         attendance_comparison["Platform_Hours"] = (
@@ -740,11 +771,6 @@ if (
             attendance_comparison["Date"],
             errors="coerce"
         ).dt.floor("D")
-
-        attendance_comparison["User"] = (
-            attendance_comparison["User"]
-            .apply(normalize_name)
-        )
 
         attendance_comparison = attendance_comparison.merge(
             justified_records.assign(Justified="YES"),
