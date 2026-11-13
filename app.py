@@ -945,6 +945,11 @@ if (
     with tab6:
         st.subheader("📧 Notifications Center")
 
+        test_mode = st.checkbox(
+            "🧪 Test Mode (Data Team)",
+            value=True
+        )
+
         if len(notification_queue) == 0:
             st.success("🎉 No users require notifications.")
 
@@ -992,6 +997,8 @@ if (
                 notification_view["User"] == selected_notification_user
             ].iloc[0]
 
+            TEST_EMAIL = "data.analyst7@communitylawgroup.com"
+
             cc_list = []
 
             for col in [
@@ -1020,9 +1027,14 @@ if (
                 ]
             )
 
-            subject = (
-                "Time Control Platform - Non Compliance Alert"
-            )
+            if test_mode:
+                subject = (
+                    "[TEST] Time Control Platform - Non Compliance Alert"
+                )
+            else:
+                subject = (
+                    "Time Control Platform - Non Compliance Alert"
+                )
 
             body = f"""
 Hello {selected_notification_user},
@@ -1037,13 +1049,23 @@ Regards,
 Time Control Platform
 """
 
+            if test_mode:
+                destination_email = TEST_EMAIL
+            else:
+                destination_email = preview_record["EMAIL"]
+
             st.markdown("### Email Preview")
 
             st.text_input(
                 "TO",
-                value=preview_record["EMAIL"],
+                value=destination_email,
                 disabled=True
             )
+
+            if test_mode:
+                st.info(
+                    f"Original recipient: {preview_record['EMAIL']}"
+                )
 
             st.text_area(
                 "CC",
