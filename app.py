@@ -731,10 +731,20 @@ if (
             errors="coerce"
         ).dt.floor("D")
 
+        justified_records["User"] = (
+            justified_records["User"]
+            .apply(normalize_name)
+        )
+
         attendance_comparison["Date"] = pd.to_datetime(
             attendance_comparison["Date"],
             errors="coerce"
         ).dt.floor("D")
+
+        attendance_comparison["User"] = (
+            attendance_comparison["User"]
+            .apply(normalize_name)
+        )
 
         attendance_comparison = attendance_comparison.merge(
             justified_records.assign(Justified="YES"),
@@ -1043,214 +1053,4 @@ if (
                             📅 {int(row['Days_Evaluated'])} días<br>
                             ✅ {int(row['Compliant_Days'])}<br>
                             ❌ {int(row['Non_Compliant_Days'])}<br>
-                            🟡 {int(row['Justified_Days'])}<br>
-                            <hr>
-                            <b>Incidencias:</b><br>
-                            {row['Failed_Dates']}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-    # =====================================
-    # TAB 5 - ATTENDANCE MATCH
-    # =====================================
-
-    with tab5:
-        st.subheader("Platform vs Attendance")
-
-        if len(attendance_comparison) > 0:
-            st.dataframe(
-                attendance_comparison[
-                    [
-                        "Date",
-                        "User",
-                        "Attendance_Hours",
-                        "Platform_Hours",
-                        "Difference_Hours",
-                        "Difference_Pct",
-                        "Status",
-                        "Justified"
-                    ]
-                ],
-                use_container_width=True,
-            )
-        else:
-            st.info("Upload ADP & UAttend file to enable comparison.")
-
-    # =====================================
-    # TAB 6 - NOTIFICATIONS CENTER
-    # =====================================
-
-    with tab6:
-        st.subheader("📧 Notifications Center")
-
-        test_mode = st.checkbox(
-            "🧪 Test Mode (Data Team)",
-            value=True
-        )
-
-        if len(notification_queue) == 0:
-            st.success("🎉 No users require notifications.")
-
-        else:
-            excluded_users = st.multiselect(
-                "Exclude users from notifications",
-                sorted(
-                    notification_queue["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                ),
-            )
-
-            notification_view = (
-                notification_queue[
-                    ~notification_queue["User"].isin(excluded_users)
-                ]
-            )
-
-            st.dataframe(
-                notification_view[
-                    [
-                        "User",
-                        "Incidents",
-                        "EMAIL",
-                    ]
-                ],
-                use_container_width=True,
-            )
-
-            st.divider()
-
-            selected_notification_user = st.selectbox(
-                "Preview Email",
-                sorted(
-                    notification_view["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
-            )
-
-            preview_record = notification_view[
-                notification_view["User"] == selected_notification_user
-            ].iloc[0]
-
-            TEST_EMAIL = "data.analyst7@communitylawgroup.com"
-
-            cc_list = []
-
-            for col in [
-                "COPY_EMAIL_SB",
-                "COPY_EMAIL_TG",
-                "COPY_EMAIL_CL"
-            ]:
-                value = preview_record.get(col)
-
-                if pd.notna(value):
-                    value = str(value).strip()
-
-                    if value != "":
-                        cc_list.append(value)
-
-            cc_list = sorted(list(set(cc_list)))
-
-            user_incidents = all_incidents[
-                all_incidents["User"] == selected_notification_user
-            ].sort_values("Date")
-
-            incident_text = "\n".join(
-                [
-                    f"- {row['Date']} | {row['Incident_Type']} | {row['Incident_Status']}"
-                    for _, row in user_incidents.iterrows()
-                ]
-            )
-
-            if test_mode:
-                subject = (
-                    "[TEST] Time Control Platform - Non Compliance Alert"
-                )
-            else:
-                subject = (
-                    "Time Control Platform - Non Compliance Alert"
-                )
-
-            body = f"""
-Hello {selected_notification_user},
-
-The Time Control Platform identified the following compliance incidents:
-
-{incident_text}
-
-Please review your time records and make any necessary corrections.
-
-Regards,
-Time Control Platform
-"""
-
-            if test_mode:
-                destination_email = TEST_EMAIL
-            else:
-                destination_email = preview_record["EMAIL"]
-
-            st.markdown("### Email Preview")
-
-            st.text_input(
-                "TO",
-                value=destination_email,
-                disabled=True
-            )
-
-            if test_mode:
-                st.info(
-                    f"Original recipient: {preview_record['EMAIL']}"
-                )
-
-            st.text_area(
-                "CC",
-                value="; ".join(cc_list),
-                height=80,
-                disabled=True
-            )
-
-            st.text_input(
-                "SUBJECT",
-                value=subject,
-                disabled=True
-            )
-
-            st.text_area(
-                "BODY",
-                value=body,
-                height=250
-            )
-
-            st.divider()
-
-            if st.button("🧪 Send Test Email"):
-                success, message = send_test_email(
-                    recipient="data.analyst7@communitylawgroup.com",
-                    subject=subject,
-                    body=body
-                )
-
-                if success:
-                    st.success("✅ Test email sent successfully.")
-                else:
-                    st.error(f"❌ SMTP Error: {message}")
-
-    # =====================================
-    # NON COMPLIANCE TABLE
-    # =====================================
-
-    if len(non_compliance) > 0:
-        st.dataframe(
-            non_compliance[["Date", "User", "Hours Worked", "Status"]],
-            use_container_width=True,
-        )
-    else:
-        st.success("🎉 No non-compliant records found!")
-
-else:
-    st.info("📌 Upload all files to begin.")
+                            🟡
