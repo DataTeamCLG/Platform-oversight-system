@@ -764,6 +764,10 @@ if (
         )
     ]
 
+    attendance_issues = attendance_comparison[
+        attendance_comparison["Status"] == "🚨 Review"
+    ].copy()
+    
     # =====================================
     # NOTIFICATION QUEUE
     # =====================================
