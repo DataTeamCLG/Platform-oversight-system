@@ -905,6 +905,11 @@ if (
         ignore_index=True
     )
 
+    all_incidents["Date"] = pd.to_datetime(
+        all_incidents["Date"],
+        errors="coerce"
+    ).dt.floor("D")
+    
     incident_source = (
         all_incidents
         .groupby("User")["Incident_Type"]
