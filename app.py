@@ -564,7 +564,7 @@ def process_files(
         compliance_summary["User"].map(failed_dates).fillna("Ninguna")
     )
 
-    return daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user map
+    return daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user_map
 
 
 # ==================================================
