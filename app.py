@@ -905,6 +905,43 @@ if (
         ignore_index=True
     )
 
+    incident_source = (
+        all_incidents
+        .groupby("User")["Incident_Type"]
+        .agg(lambda x: sorted(set(x)))
+    )
+
+    # ⚠️ ESTE BLOQUE ESTABA MAL INDENTADO (dentro del for) — ahora está fuera
+    source_map = {}
+
+    for user, incident_types in incident_source.items():
+
+        has_compliance = (
+            "🚨 Compliance Issue"
+            in incident_types
+        )
+
+        has_attendance = (
+            "🚨 Attendance Mismatch"
+            in incident_types
+        )
+
+        if has_compliance and has_attendance:
+
+            source_map[user] = "Mixed"
+
+        elif has_compliance:
+
+            source_map[user] = "Compliance"
+
+        elif has_attendance:
+
+            source_map[user] = "Attendance"
+
+        else:
+
+            source_map[user] = "Unknown"
+
     # =====================================
     # NOTIFICATION QUEUE
     # =====================================
@@ -916,6 +953,11 @@ if (
             Incidents=("Date", "count")
         )
         .reset_index()
+    )
+
+    notification_queue["Source"] = (
+        notification_queue["User"]
+        .map(source_map)
     )
 
     notification_queue = notification_queue.merge(
@@ -1151,6 +1193,7 @@ if (
                     [
                         "User",
                         "Incidents",
+                        "Source",
                         "EMAIL",
                     ]
                 ],
@@ -1172,6 +1215,10 @@ if (
             preview_record = notification_view[
                 notification_view["User"] == selected_notification_user
             ].iloc[0]
+
+            st.info(
+                f"Source: {preview_record['Source']}"
+            )
 
             TEST_EMAIL = "data.analyst7@communitylawgroup.com"
 
