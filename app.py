@@ -911,7 +911,6 @@ if (
         .agg(lambda x: sorted(set(x)))
     )
 
-    # ⚠️ ESTE BLOQUE ESTABA MAL INDENTADO (dentro del for) — ahora está fuera
     source_map = {}
 
     for user, incident_types in incident_source.items():
@@ -1243,11 +1242,69 @@ if (
                 all_incidents["User"] == selected_notification_user
             ].sort_values("Date")
 
-            incident_text = "\n".join(
-                [
-                    f"- {row['Date']} | {row['Incident_Type']} | {row['Incident_Status']}"
-                    for _, row in user_incidents.iterrows()
-                ]
+            # =====================================
+            # BUILD INCIDENT DETAILS
+            # =====================================
+
+            incident_details = []
+
+            for _, row in user_incidents.iterrows():
+
+                incident_date = row["Date"]
+
+                if row["Incident_Type"] == "🚨 Compliance Issue":
+
+                    compliance_row = compliance_engine[
+                        (compliance_engine["User"] == selected_notification_user)
+                        &
+                        (
+                            pd.to_datetime(compliance_engine["Date"])
+                            == pd.to_datetime(incident_date)
+                        )
+                    ]
+
+                    if len(compliance_row) > 0:
+
+                        compliance_row = compliance_row.iloc[0]
+
+                        incident_details.append(
+                            f"""
+Date: {incident_date}
+Type: Compliance
+Hours Worked: {compliance_row['Hours Worked']}
+Hours Required: {compliance_row['Hours Required']}
+Issue: {compliance_row['Status']}
+"""
+                        )
+
+                elif row["Incident_Type"] == "🚨 Attendance Mismatch":
+
+                    attendance_row = attendance_comparison[
+                        (attendance_comparison["User"] == selected_notification_user)
+                        &
+                        (
+                            pd.to_datetime(attendance_comparison["Date"])
+                            == pd.to_datetime(incident_date)
+                        )
+                    ]
+
+                    if len(attendance_row) > 0:
+
+                        attendance_row = attendance_row.iloc[0]
+
+                        incident_details.append(
+                            f"""
+Date: {incident_date}
+Type: Attendance
+Attendance Hours: {attendance_row['Attendance_Hours']}
+Platform Hours: {attendance_row['Platform_Hours']}
+Difference Hours: {attendance_row['Difference_Hours']}
+Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row.index else '🚨 Review'}
+"""
+                        )
+
+            incident_text = "\n----------------------------------------\n".join(
+                incident_details
             )
 
             if test_mode:
@@ -1262,13 +1319,16 @@ if (
             body = f"""
 Hello {selected_notification_user},
 
-The Time Control Platform identified the following compliance incidents:
+The Time Control Platform identified {len(user_incidents)} incident(s) during the selected period.
 
 {incident_text}
 
-Please review your time records and make any necessary corrections.
+Please review your records and make any necessary corrections.
+
+If you believe a record is incorrect, please contact your supervisor or the Data Team.
 
 Regards,
+
 Time Control Platform
 """
 
