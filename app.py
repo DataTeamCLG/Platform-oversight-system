@@ -1,1404 +1,605 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import unicodedata
 import smtplib
-
-from email.mime.text import MIMEText
+import ssl
+import time
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+import base64
+from datetime import datetime, time as dt_time, timedelta
+import requests
+from io import BytesIO
+from PIL import Image
+import pytz
+import traceback
+import re
 
-
-# ==================================================
-# CONFIG
-# ==================================================
+# ============================================================
+# CONFIGURACIÓN DE PÁGINA
+# ============================================================
 
 st.set_page_config(
-    page_title="Time Control Platform",
-    page_icon="⏱️",
-    layout="wide",
+    page_title="Toggl Incident Notifier",
+    page_icon="⚠️",
+    layout="wide"
 )
 
-MINIMUM_DAILY_HOURS = 8
+# ============================================================
+# CONFIGURACIÓN GENERAL Y SECRETS (SEGURO)
+# ============================================================
 
+# Leer configuración SMTP desde Streamlit Secrets
+try:
+    SMTP_SERVER = st.secrets["SMTP"]["SERVER"]
+    SMTP_PORT = int(st.secrets["SMTP"]["PORT"])
+    SMTP_USERNAME = st.secrets["SMTP"]["EMAIL"]
+    SMTP_PASSWORD = st.secrets["SMTP"]["PASSWORD"]
+except Exception:
+    SMTP_SERVER = None
+    SMTP_PORT = None
+    SMTP_USERNAME = None
+    SMTP_PASSWORD = None
 
-# ==================================================
-# FUNCTIONS
-# ==================================================
+URL_LOGO_GITHUB = "https://raw.githubusercontent.com/DataTeamCLG/Toggl-WorkFlow-Automation/main/emailclg.png"
+URL_BANNER_GITHUB = "https://raw.githubusercontent.com/Iamnotmanolotaco/Inmigration-USCIS-Alerts-Automation/main/banner.png"
 
-def send_test_email(recipient, subject, body):
+NOMBRE_EMPRESA = "Community Law Group, PLLC® "
+DEPARTAMENTO = "Quality Control & Efficiency Department"
+EMAIL_CONTACTO = "data.analyst7@communitylawgroup.com"
+SITIO_WEB = "www.communitylawgroup.com"
+
+TAMANO_LOGO = 120
+LOGO_WIDTH = 120
+LOGO_MAX_BYTES = 8000  # 8 KB: Tamaño ultra-ligero a prueba de Outlook
+
+ZONA_HORARIA = pytz.timezone('America/Bogota')
+
+HOJA_NAMES = "Names"
+HOJA_INCIDENTES = "TogglFilterDB"
+
+# ============================================================
+# RECURSOS (LOGO / BANNER)
+# ============================================================
+
+def get_image_from_github(url):
     try:
-        smtp_server = st.secrets["SMTP_SERVER"]
-        smtp_port = int(st.secrets["SMTP_PORT"])
+        r = requests.get(url, timeout=10)
+        return r.content if r.status_code == 200 else None
+    except Exception:
+        return None
 
-        smtp_user = st.secrets["SMTP_USER"]
-        smtp_password = st.secrets["SMTP_PASSWORD"]
 
-        msg = MIMEMultipart()
+def optimizar_logo(logo_bytes, target_width=LOGO_WIDTH, max_bytes=LOGO_MAX_BYTES):
+    if logo_bytes is None:
+        return None, None
+    try:
+        original = Image.open(BytesIO(logo_bytes))
+        if original.mode in ('RGBA', 'LA', 'P'):
+            original = original.convert('RGBA')
+            rgb = Image.new("RGB", original.size, (255, 255, 255))
+            rgb.paste(original, mask=original.split()[-1])
+        else:
+            rgb = original.convert("RGB")
 
-        msg["From"] = smtp_user
-        msg["To"] = recipient
-        msg["Subject"] = subject
+        w, h = rgb.size
+        target_height = int(target_width * (h / w))
+        img = rgb.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
-        msg.attach(
-            MIMEText(body, "plain")
-        )
+        for quality in (85, 75, 65, 55, 45, 35):
+            out = BytesIO()
+            img.save(out, format='JPEG', quality=quality, optimize=True)
+            data = out.getvalue()
+            if len(data) <= max_bytes:
+                return data, 'jpeg'
 
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(msg)
-        server.quit()
+        for width in (100, 80):
+            th = int(width * (h / w))
+            small = img.resize((width, th), Image.Resampling.LANCZOS)
+            out = BytesIO()
+            small.save(out, format='JPEG', quality=75, optimize=True)
+            data = out.getvalue()
+            if len(data) <= max_bytes:
+                return data, 'jpeg'
+        return data, 'jpeg'
+    except Exception:
+        return logo_bytes, 'png'
 
-        return True, "Email sent successfully"
 
+def get_logo_bytes():
+    raw = get_image_from_github(URL_LOGO_GITHUB)
+    if not raw:
+        return None, None
+    return optimizar_logo(raw, LOGO_WIDTH, LOGO_MAX_BYTES)
+
+
+def get_banner_base64():
+    b = get_image_from_github(URL_BANNER_GITHUB)
+    if b:
+        return f"data:image/png;base64,{base64.b64encode(b).decode('utf-8')}"
+    return None
+
+# ============================================================
+# UTILIDADES
+# ============================================================
+
+def obtener_saludo_en():
+    h = datetime.now(ZONA_HORARIA).hour
+    if 5 <= h < 12:
+        return "Good morning"
+    elif 12 <= h < 18:
+        return "Good afternoon"
+    return "Good evening"
+
+
+def obtener_hora_local():
+    return datetime.now(ZONA_HORARIA)
+
+
+def limpiar_emails(valor):
+    if pd.isna(valor) or valor is None:
+        return []
+    txt = str(valor).strip()
+    if txt.lower() in ('disabled', 'n/a', ''):
+        return []
+    partes = re.split(r'[;,\n]+', txt)
+    return [p.strip() for p in partes if p.strip() and '@' in p.strip()]
+
+
+def normalizar_nombre(nombre):
+    if pd.isna(nombre):
+        return ""
+    return re.sub(r'\s+', ' ', str(nombre).strip()).lower()
+
+
+def formatear_duracion(valor):
+    if pd.isna(valor):
+        return "0:00:00"
+    
+    if isinstance(valor, dt_time):
+        return f"{valor.hour}:{valor.minute:02d}:{valor.second:02d}"
+        
+    if isinstance(valor, timedelta):
+        total_seg = int(valor.total_seconds())
+        h, rem = divmod(total_seg, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h}:{m:02d}:{s:02d}"
+
+    s = str(valor).strip()
+    
+    if re.match(r'^\d+:\d{2}:\d{2}$', s):
+        return s
+    if re.match(r'^\d+:\d{2}$', s):
+        return s + ":00"
+    if "days" in s.lower() or "day" in s.lower():
+        match = re.search(r'(\d+)', s)
+        if match:
+            h = int(match.group(1)) * 24
+            return f"{h}:00:00"
+            
+    try:
+        val_float = float(s)
+        total_seg = int(round(val_float * 3600))
+        h, rem = divmod(total_seg, 3600)
+        m, sec = divmod(rem, 60)
+        return f"{h}:{m:02d}:{sec:02d}"
+    except ValueError:
+        pass
+        
+    if isinstance(valor, (int, float)):
+        total_seg = int(round(float(valor) * 3600))
+        h, rem = divmod(total_seg, 3600)
+        m, sec = divmod(rem, 60)
+        return f"{h}:{m:02d}:{sec:02d}"
+
+    return s
+
+
+def formatear_fecha(valor):
+    if pd.isna(valor):
+        return ""
+    if isinstance(valor, (pd.Timestamp, datetime)):
+        return valor.strftime('%m/%d/%Y')
+    try:
+        return pd.to_datetime(valor).strftime('%m/%d/%Y')
+    except Exception:
+        return str(valor)
+
+# ============================================================
+# HTML DEL CORREO
+# ============================================================
+
+def generar_html_incidencias(usuario_info, df_usuario, logo_cid=None):
+    saludo = obtener_saludo_en()
+    prefix = usuario_info.get('prefix', '')
+    nombre = usuario_info.get('nombre', '')
+    saludo_completo = f"{saludo} {prefix} {nombre},".replace("  ", " ").strip()
+
+    filas = ""
+    for idx, (_, row) in enumerate(df_usuario.iterrows()):
+        fecha = formatear_fecha(row.get('Date', ''))
+        proyecto = row.get('Project (Activity)', '')
+        cliente = row.get('Client Tag', '')
+        descripcion = row.get('Description', '')
+        duracion = formatear_duracion(row.get('Duration', ''))
+        tipo = row.get('Type of incident', row.get('Type of Incident', ''))
+        obs = row.get('Observations', '')
+        
+        bg_color = "#ffffff" if idx % 2 == 0 else "#f8fafc"
+        
+        filas += f"""
+        <tr style="background-color: {bg_color};">
+            <td style="padding: 12px 15px; color: #334155; font-size: 14px; white-space: nowrap;">{fecha}</td>
+            <td style="padding: 12px 15px; color: #334155; font-size: 14px;">{proyecto}</td>
+            <td style="padding: 12px 15px; font-size: 14px;">
+                <span style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap;">{cliente}</span>
+            </td>
+            <td style="padding: 12px 15px; color: #334155; font-size: 14px;">{descripcion}</td>
+            <td style="padding: 12px 15px; color: #012338; font-size: 14px; font-weight: 700; white-space: nowrap;">{duracion}</td>
+            <td style="padding: 12px 15px; color: #b91c1c; font-size: 14px; font-weight: 700;">{tipo}</td>
+            <td style="padding: 12px 15px; color: #0f172a; font-size: 13px; font-weight: 700; font-style: italic;">{obs}</td>
+        </tr>
+        """
+
+    logo_html = ""
+    if logo_cid:
+        logo_html = f"""
+        <img src="cid:{logo_cid}" alt="{NOMBRE_EMPRESA}" width="{TAMANO_LOGO}"
+             style="width: {TAMANO_LOGO}px; height: auto; border: none; display: block; margin: 0 auto 10px auto;">
+        """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: 'Segoe UI', 'Calibri', Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #012338;">
+            <tr>
+                <td align="center" style="padding: 30px 20px;">
+                    <h1 style="margin: 0; font-size: 26px; font-weight: 700; color: #ffffff; letter-spacing: 0.5px;">⚠️ Toggl Incident Notification</h1>
+                    <p style="margin: 8px 0 0 0; font-size: 15px; color: #7dd3fc; font-weight: 500;">Time Entries Incident Report</p>
+                </td>
+            </tr>
+        </table>
+
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff;">
+            <tr>
+                <td style="padding: 30px 20px;">
+                    
+                    <div style="background-color: #f0f9ff; padding: 15px 20px; border-radius: 6px; margin-bottom: 25px;">
+                        <strong style="font-size: 18px; color: #012338;">{saludo_completo}</strong>
+                    </div>
+
+                    <p style="font-size: 15px; color: #334155; margin-bottom: 15px;">
+                        As part of the training process for habits in Toggl — especially regarding the
+                        Timers component — we are sending you the incident report on Time Entries
+                        incidents detected in your account.
+                    </p>
+                    <p style="font-size: 15px; color: #334155; margin-bottom: 25px;">
+                        The following <strong style="color: #ef4444; font-size: 16px;">{len(df_usuario)}</strong> incident(s) were identified and require your review:
+                    </p>
+
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; text-align: left; margin: 20px 0;">
+                        <thead>
+                            <tr style="background-color: #012338;">
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Date</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Project (Activity)</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Client Tag</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Description</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Duration</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Type of Incident</th>
+                                <th style="background-color: #012338; color: #ffffff; font-weight: 700; padding: 14px 15px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; border: none;">Observations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filas}
+                        </tbody>
+                    </table>
+
+                    <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 20px; border-radius: 6px; margin-top: 30px;">
+                        <strong style="color: #012338; font-size: 15px; display: block; margin-bottom: 10px; text-transform: uppercase;">Action Required:</strong>
+                        <span style="font-size: 14px; color: #1e3a8a;">
+                            We expect team members to correct their time entries, activities, and activity descriptions within a maximum period of 24 hours.<br><br>
+                            Should you have any questions regarding this report, please contact the Quality Control & Efficiency Department.<br>
+                            Thank you for your attention and cooperation.
+                        </span>
+                    </div>
+
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 40px;">
+                        <tr>
+                            <td align="center" style="padding-top: 25px; border-top: 2px solid #e2e8f0; text-align: center;">
+                                {logo_html}
+                                <strong style="color: #012338; font-size: 16px; display: block; margin-bottom: 4px;">{NOMBRE_EMPRESA}</strong>
+                                <span style="color: #0284c7; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">{DEPARTAMENTO}</span>
+                                <span style="color: #64748b; font-size: 13px; display: inline-block;">
+                                    ✉️ <a href="mailto:{EMAIL_CONTACTO}" style="color: #0284c7; text-decoration: none;">{EMAIL_CONTACTO}</a> &nbsp;|&nbsp; 🌐 <a href="https://{SITIO_WEB}" style="color: #0284c7; text-decoration: none;">{SITIO_WEB}</a>
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    return html
+
+# ============================================================
+# ENVÍO DE CORREO (BLINDADO Y SEGURO)
+# ============================================================
+
+def enviar_correo(smtp_server, smtp_port, smtp_username, smtp_password,
+                  to_emails, cc_emails, subject, html_body, logo_bytes=None):
+    try:
+        msg = MIMEMultipart('related')
+        msg['Subject'] = subject
+        msg['From'] = smtp_username
+        msg['To'] = ", ".join(to_emails)
+        if cc_emails:
+            msg['CC'] = ", ".join(cc_emails)
+        msg['X-Priority'] = '1'
+
+        msg_alt = MIMEMultipart('alternative')
+        msg_alt.attach(MIMEText(html_body, 'html', 'utf-8'))
+        msg.attach(msg_alt)
+
+        if logo_bytes:
+            try:
+                cid = "company_logo_cid"
+                img = MIMEImage(logo_bytes)
+                img.add_header('Content-ID', f'<{cid}>')
+                img.add_header('Content-Disposition', 'inline', filename='logo.jpeg')
+                img.add_header('X-Attachment-Id', cid)
+                img.add_header('Content-Transfer-Encoding', 'base64')
+                msg.attach(img)
+            except Exception as e:
+                print(f"Error adjuntando logo: {e}")
+
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls(context=ctx)
+            server.login(smtp_username, smtp_password)
+            server.sendmail(smtp_username, to_emails + (cc_emails or []), msg.as_string())
+        return True, "OK"
     except Exception as e:
         return False, str(e)
 
+# ============================================================
+# PROCESAMIENTO PRINCIPAL
+# ============================================================
 
-def normalize_name(text):
-    if pd.isna(text):
-        return ""
-    text = str(text).strip().upper()
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-    text = " ".join(text.split())
-    return text
+def cargar_hojas(uploaded_file):
+    xls = pd.ExcelFile(uploaded_file, engine='openpyxl')
+    hojas = {re.sub(r'\s+', '', h).lower(): h for h in xls.sheet_names}
+
+    if re.sub(r'\s+', '', HOJA_NAMES).lower() not in hojas:
+        raise ValueError(f"Sheet '{HOJA_NAMES}' not found. Available: {xls.sheet_names}")
+    if re.sub(r'\s+', '', HOJA_INCIDENTES).lower() not in hojas:
+        raise ValueError(f"Sheet '{HOJA_INCIDENTES}' not found. Available: {xls.sheet_names}")
+
+    df_names = pd.read_excel(xls, sheet_name=hojas[re.sub(r'\s+', '', HOJA_NAMES).lower()])
+    df_inc = pd.read_excel(xls, sheet_name=hojas[re.sub(r'\s+', '', HOJA_INCIDENTES).lower()])
+    return df_names, df_inc
 
 
-def build_user_mapping(df_names):
-    mappings = []
-    source_columns = ["NAME TG", "NAME CL", "NAME SB"]
-
+def construir_mapa_usuarios(df_names):
+    mapa = {}
     for _, row in df_names.iterrows():
-        correct_name = row.get("NAME CORRECT")
-        if pd.isna(correct_name):
+        nombre = row.get('NAME CORRECT')
+        if pd.isna(nombre):
             continue
-        for col in source_columns:
-            source_name = row.get(col)
-            if pd.notna(source_name):
-                mappings.append(
-                    {
-                        "SOURCE_NAME": normalize_name(source_name),
-                        "NAME_CORRECT": correct_name,
-                    }
-                )
-
-    if len(mappings) == 0:
-        return {}
-
-    map_df = pd.DataFrame(mappings)
-    return dict(zip(map_df["SOURCE_NAME"], map_df["NAME_CORRECT"]))
-
-
-def convert_duration_to_hours(duration):
-    try:
-        td = pd.to_timedelta(str(duration))
-        return round(td.total_seconds() / 3600, 4)
-    except Exception:
-        return 0
-
-
-def get_novelty_status(user, target_date, df_novelties):
-    result = df_novelties[
-        (df_novelties["Persona"] == user)
-        & (df_novelties["Fecha Inicio"] <= target_date)
-        & (df_novelties["Fecha Fin"] >= target_date)
-    ]
-    if len(result) > 0:
-        return result.iloc[0]["Tipo de Novedad"]
-    return None
-
-
-@st.cache_data
-def process_files(
-    toggl_file,
-    camplegal_file,
-    smokeball_file,
-    resources_file,
-    novelties_file,
-    clg_novelties_file,
-    start_date,
-    end_date,
-):
-    # =========================================
-    # READ FILES
-    # =========================================
-
-    df_toggl = pd.read_excel(toggl_file, sheet_name="DataBaseToggl", engine="openpyxl")
-    df_camplegal = pd.read_excel(camplegal_file, sheet_name="Time entries", engine="openpyxl")
-    df_smokeball = pd.read_excel(smokeball_file, sheet_name="Entries", engine="openpyxl")
-    df_names = pd.read_excel(resources_file, sheet_name="Names", engine="openpyxl")
-    df_novelties = pd.read_excel(novelties_file, sheet_name="Novedades", engine="openpyxl")
-    df_clg_novelties = pd.read_excel(clg_novelties_file, sheet_name="Novedades", engine="openpyxl")
-    df_special_days = pd.read_excel(novelties_file, sheet_name="Novedades 2", engine="openpyxl")
-    df_clg_special_days = pd.read_excel(clg_novelties_file, sheet_name="Novedades 2", engine="openpyxl")
-
-    # =========================================
-    # PARSE NOVELTIES
-    # =========================================
-
-    df_novelties["Fecha Inicio"] = pd.to_datetime(df_novelties["Fecha Inicio"], errors="coerce")
-    df_novelties["Fecha Fin"] = pd.to_datetime(df_novelties["Fecha Fin"], errors="coerce")
-    df_clg_novelties["Fecha Inicio"] = pd.to_datetime(df_clg_novelties["Fecha Inicio"], errors="coerce")
-    df_clg_novelties["Fecha Fin"] = pd.to_datetime(df_clg_novelties["Fecha Fin"], errors="coerce")
-
-    # =========================================
-    # PARSE SPECIAL DAYS
-    # =========================================
-
-    df_special_days["Fecha"] = pd.to_datetime(df_special_days["Fecha"], errors="coerce")
-    df_clg_special_days["Fecha"] = pd.to_datetime(df_clg_special_days["Fecha"], errors="coerce")
-
-    # Normalizar columnas para días especiales
-    df_special_days["PERSONA_NORMALIZADA"] = df_special_days["Persona"].astype(str).apply(normalize_name)
-    df_special_days["TIPO_NORMALIZADO"] = df_special_days["Tipo de Novedad"].astype(str).str.upper().str.strip()
-
-    df_clg_special_days["PERSONA_NORMALIZADA"] = df_clg_special_days["Persona"].astype(str).apply(normalize_name)
-    df_clg_special_days["TIPO_NORMALIZADO"] = df_clg_special_days["Tipo de Novedad"].astype(str).str.upper().str.strip()
-
-    # Normalizar columnas para novedades CLG
-    df_clg_novelties["PERSONA_NORMALIZADA"] = df_clg_novelties["Persona"].astype(str).apply(normalize_name)
-
-    # =========================================
-    # USER MAP
-    # =========================================
-
-    user_map = build_user_mapping(df_names)
-
-    # =========================================
-    # NORMALIZE USERS
-    # =========================================
-
-    df_toggl["NORMALIZED_MEMBER"] = df_toggl["Member"].astype(str).apply(normalize_name)
-    df_toggl["USER_CORRECT"] = df_toggl["NORMALIZED_MEMBER"].map(user_map).fillna(df_toggl["Member"])
-
-    df_camplegal["NORMALIZED_MEMBER"] = df_camplegal["Staff Name"].astype(str).apply(normalize_name)
-    df_camplegal["USER_CORRECT"] = df_camplegal["NORMALIZED_MEMBER"].map(user_map).fillna(df_camplegal["Staff Name"])
-
-    df_smokeball["NORMALIZED_MEMBER"] = df_smokeball["Name"].astype(str).apply(normalize_name)
-    df_smokeball["USER_CORRECT"] = df_smokeball["NORMALIZED_MEMBER"].map(user_map).fillna(df_smokeball["Name"])
-
-    # =========================================
-    # DATE
-    # =========================================
-
-    df_toggl["Date1"] = pd.to_datetime(df_toggl["Date1"], errors="coerce")
-    df_camplegal["Date1"] = pd.to_datetime(df_camplegal["Date"], errors="coerce")
-    df_smokeball["Date1"] = pd.to_datetime(df_smokeball["Date"], errors="coerce")
-
-    # =========================================
-    # FILTER DATES
-    # =========================================
-
-    start_dt = pd.to_datetime(start_date)
-
-    end_dt = (
-        pd.to_datetime(end_date)
-        + pd.Timedelta(days=1)
-        - pd.Timedelta(seconds=1)
-    )
-
-    df_toggl = df_toggl[
-        (df_toggl["Date1"] >= start_dt) & (df_toggl["Date1"] <= end_dt)
-    ]
-
-    df_camplegal = df_camplegal[
-        (df_camplegal["Date1"] >= start_dt) & (df_camplegal["Date1"] <= end_dt)
-    ]
-
-    df_smokeball = df_smokeball[
-        (df_smokeball["Date1"] >= start_dt) & (df_smokeball["Date1"] <= end_dt)
-    ]
-
-    # =========================================
-    # HOURS
-    # =========================================
-
-    df_toggl["Hours"] = df_toggl["Duration"].apply(convert_duration_to_hours)
-    df_camplegal["Hours"] = pd.to_numeric(df_camplegal["Hours Spent"], errors="coerce").fillna(0)
-    df_smokeball["Hours"] = pd.to_numeric(df_smokeball["Hours"], errors="coerce").fillna(0)
-
-    # =========================================
-    # STANDARDIZE COLUMNS
-    # =========================================
-
-    df_toggl["Activity"] = df_toggl["Project (Activity)"]
-    df_toggl["Source"] = "Toggl"
-
-    df_camplegal["Activity"] = df_camplegal["Activity"].astype(str)
-    df_camplegal["Source"] = "Camp Legal"
-
-    df_smokeball["Activity"] = df_smokeball["Subject"].astype(str)
-    df_smokeball["Source"] = "Smokeball"
-
-    # =========================================
-    # SELECT COLUMNS
-    # =========================================
-
-    df_toggl_std = df_toggl[["Date1", "USER_CORRECT", "Hours", "Activity", "Source"]].copy()
-    df_camplegal_std = df_camplegal[["Date1", "USER_CORRECT", "Hours", "Activity", "Source"]].copy()
-    df_smokeball_std = df_smokeball[["Date1", "USER_CORRECT", "Hours", "Activity", "Source"]].copy()
-
-    # =========================================
-    # CONCATENATE
-    # =========================================
-
-    df_all_time = pd.concat(
-        [df_toggl_std, df_camplegal_std, df_smokeball_std],
-        ignore_index=True,
-    )
-
-    # =========================================
-    # DAILY REPORT
-    # =========================================
-
-    df_all_time["Work_Date"] = (
-        pd.to_datetime(df_all_time["Date1"]).dt.floor("D")
-    )
-
-    daily_report = (
-        df_all_time
-        .groupby(["Work_Date", "USER_CORRECT"], as_index=False)
-        .agg(Total_Hours=("Hours", "sum"))
-    )
-
-    daily_report["Total_Hours"] = daily_report["Total_Hours"].round(2)
-    daily_report["Status"] = "See Compliance Engine"
-
-    # =========================================
-    # EMPLOYEE INFO
-    # =========================================
-
-    employee_info = (
-        df_names[["NAME CORRECT", "COMPANY", "DEPARTMENT", "TEAM", "EMAIL", "COPY_EMAIL_SB", "COPY_EMAIL_TG", "COPY_EMAIL_CL"]]
-        .drop_duplicates(subset=["NAME CORRECT"])
-    )
-
-    daily_report = daily_report.merge(
-        employee_info,
-        left_on="USER_CORRECT",
-        right_on="NAME CORRECT",
-        how="left",
-    )
-
-    # =========================================
-    # USER SUMMARY
-    # =========================================
-
-    users_summary = (
-        df_all_time
-        .groupby("USER_CORRECT")
-        .agg(Total_Hours=("Hours", "sum"), Entries=("Hours", "count"))
-        .reset_index()
-    )
-
-    users_summary["Total_Hours"] = users_summary["Total_Hours"].round(2)
-
-    users_summary = users_summary.merge(
-        employee_info,
-        left_on="USER_CORRECT",
-        right_on="NAME CORRECT",
-        how="left",
-    )
-
-    users_summary = users_summary.sort_values("Total_Hours", ascending=False)
-
-    # =========================================
-    # DETAIL REPORT
-    # =========================================
-
-    detail_report = df_all_time.copy()
-
-    # =========================================
-    # COMPLIANCE ENGINE
-    # =========================================
-
-    active_users = df_names[
-        df_names["USER STATUS"].astype(str).str.upper().eq("ACTIVE")
-    ]["NAME CORRECT"].dropna().unique()
-
-    company_map = dict(zip(df_names["NAME CORRECT"], df_names["COMPANY"]))
-    contract_map = dict(zip(df_names["NAME CORRECT"], df_names["TYPE OF CONTRACT"]))
-
-    all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
-
-    compliance_records = []
-
-    for current_day in all_dates:
-        weekday = current_day.weekday()
-
-        for user in active_users:
-            normalized_user = normalize_name(user)
-            user_company = str(company_map.get(user, "")).upper().strip()
-            user_contract = normalize_name(contract_map.get(user, ""))
-            required_hours = 0
-            holiday_assignments = pd.DataFrame()
-
-            # =========================================
-            # VERIFICAR SI EL USUARIO ESTÁ EN FESTIVO (NO TRABAJA)
-            # =========================================
-            holiday_user = df_special_days[
-                (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
-                & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
-                & (df_special_days["Fecha"].dt.date == current_day.date())
-            ]
-
-            if len(holiday_user) > 0:
-                continue
-
-            # =========================================
-            # VERIFICAR DÍA FESTIVO (PARA TODOS)
-            # =========================================
-            holiday_assignments = df_special_days[
-                (df_special_days["PERSONA_NORMALIZADA"] == "TODOS")
-                & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
-                & (df_special_days["Fecha"].dt.date == current_day.date())
-            ]
-
-            is_holiday = len(holiday_assignments) > 0
-
-            if is_holiday:
-                holiday_worker = df_special_days[
-                    (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
-                    & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO_PROGRAMADO")
-                    & (df_special_days["Fecha"].dt.date == current_day.date())
-                ]
-                if len(holiday_worker) > 0:
-                    required_hours = 8
-                else:
-                    required_hours = 0
-            else:
-                # =========================================
-                # LUNES A VIERNES
-                # =========================================
-                if weekday <= 4:
-                    required_hours = 8
-
-                # =========================================
-                # SÁBADOS
-                # =========================================
-                elif weekday == 5:
-                    if user_company == "MAX":
-                        saturday_user = df_special_days[
-                            (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
-                            & (df_special_days["Fecha"].dt.date == current_day.date())
-                        ]
-                        if len(saturday_user) > 0:
-                            required_hours = 4
-                        else:
-                            required_hours = 0
-
-                    elif user_company == "CLG":
-                        clg_saturday_user = df_clg_special_days[
-                            (df_clg_special_days["PERSONA_NORMALIZADA"] == normalized_user)
-                            & (df_clg_special_days["TIPO_NORMALIZADO"] == "SABADO")
-                            & (df_clg_special_days["Fecha"].dt.date == current_day.date())
-                        ]
-                        if len(clg_saturday_user) > 0:
-                            required_hours = 8
-                        else:
-                            required_hours = 0
-                    else:
-                        required_hours = 0
-
-                # =========================================
-                # DOMINGOS
-                # =========================================
-                else:
-                    required_hours = 0
-
-            # =========================================
-            # PRESTACIÓN DE SERVICIO
-            # =========================================
-
-            is_service_contract = "PRESTACION" in user_contract
-
-            # =========================================
-            # SI NO HAY HORAS REQUERIDAS, SALTAR
-            # =========================================
-            if required_hours == 0:
-                continue
-
-            # =========================================
-            # OBTENER HORAS TRABAJADAS
-            # =========================================
-            day_record = daily_report[
-                (daily_report["USER_CORRECT"] == user)
-                & (daily_report["Work_Date"].dt.date == current_day.date())
-            ]
-
-            worked_hours = 0.0
-            if len(day_record) > 0:
-                worked_hours = float(day_record["Total_Hours"].sum())
-
-            # =========================================
-            # OBTENER NOVEDAD
-            # =========================================
-            novelty = get_novelty_status(user, current_day, df_novelties)
-
-            if novelty is None and user_company == "CLG":
-                clg_novelty = df_clg_novelties[
-                    (df_clg_novelties["PERSONA_NORMALIZADA"] == normalized_user)
-                    & (current_day >= df_clg_novelties["Fecha Inicio"])
-                    & (current_day <= df_clg_novelties["Fecha Fin"])
-                ]
-                if len(clg_novelty) > 0:
-                    novelty = str(clg_novelty.iloc[0]["Tipo de Novedad"])
-
-            # =========================================
-            # LÓGICA DE STATUS
-            # =========================================
-            if is_service_contract:
-                status = "🟣 Prestación de servicio"
-            elif novelty is not None:
-                status = f"🟡 {novelty}"
-            elif worked_hours == 0:
-                status = "❌ No registró tiempo"
-            elif required_hours == 4:
-                if worked_hours >= 3.5:
-                    status = "✅ Cumple"
-                else:
-                    status = "❌ Horas insuficientes"
-            elif worked_hours < required_hours:
-                status = "❌ Horas insuficientes"
-            else:
-                status = "✅ Cumple"
-
-            compliance_records.append(
-                {
-                    "Date": current_day.date(),
-                    "Weekday": weekday,
-                    "User": user,
-                    "Hours Worked": round(worked_hours, 2),
-                    "Hours Required": required_hours,
-                    "Novelty": novelty,
-                    "Status": status,
-                    "Holiday Count": len(holiday_assignments),
-                    "Current Day": current_day.date(),
-                }
-            )
-
-    compliance_engine = pd.DataFrame(compliance_records)
-
-    compliance_summary = (
-        compliance_engine
-        .groupby("User")
-        .agg(
-            Total_Hours=("Hours Worked", "sum"),
-            Days_Evaluated=("Date", "count"),
-        )
-        .reset_index()
-    )
-
-    success_counts = (
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["✅ Cumple", "🟣 Prestación de servicio"]
-            )
-        ]
-        .groupby("User")
-        .size()
-    )
-
-    failure_counts = (
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
-        ]
-        .groupby("User")
-        .size()
-    )
-
-    novelty_counts = (
-        compliance_engine[
-            compliance_engine["Status"].astype(str).str.startswith("🟡")
-        ]
-        .groupby("User")
-        .size()
-    )
-
-    compliance_summary["Compliant_Days"] = (
-        compliance_summary["User"].map(success_counts).fillna(0)
-    )
-
-    compliance_summary["Non_Compliant_Days"] = (
-        compliance_summary["User"].map(failure_counts).fillna(0)
-    )
-
-    compliance_summary["Justified_Days"] = (
-        compliance_summary["User"].map(novelty_counts).fillna(0)
-    )
-
-    daily_status = (
-        compliance_engine
-        .sort_values("Date")
-        .groupby("User")
-        .apply(
-            lambda df: " | ".join(
-                [
-                    f"{d.strftime('%m/%d')} {s}"
-                    for d, s in zip(df["Date"], df["Status"])
-                ]
-            )
-        )
-    )
-
-    compliance_summary["Daily_Status"] = (
-        compliance_summary["User"].map(daily_status).fillna("")
-    )
-
-    # Calcular Failed_Dates para cada usuario
-    failed_dates = (
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
-        ]
-        .groupby("User")["Date"]
-        .apply(lambda dates: ", ".join(d.strftime("%m/%d") for d in dates))
-    )
-
-    compliance_summary["Failed_Dates"] = (
-        compliance_summary["User"].map(failed_dates).fillna("Ninguna")
-    )
-
-    return daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user_map
-
-
-# ==================================================
-# HEADER
-# ==================================================
-
-st.title("⏱️ Time Control Platform")
-st.markdown("### Final Phase - Toggl - Camp Legal - Smokeball Validation")
-
-
-# ==================================================
-# SIDEBAR
-# ==================================================
-
-st.sidebar.header("Upload Files")
-
-resources_file = st.sidebar.file_uploader("Power BI Resources", type=["xlsx"])
-toggl_file = st.sidebar.file_uploader("Toggl File", type=["xlsx"])
-novelties_file = st.sidebar.file_uploader("Novedades RRHH", type=["xlsx"])
-clg_novelties_file = st.sidebar.file_uploader("Novedades CLG", type=["xlsx"])
-camplegal_file = st.sidebar.file_uploader("Camp Legal", type=["xlsx"])
-smokeball_file = st.sidebar.file_uploader("Smokeball", type=["xlsx"])
-attendance_file = st.sidebar.file_uploader("ADP & UAttend", type=["xlsx"])
-
-st.sidebar.divider()
-
-start_date = st.sidebar.date_input("Start Date")
-end_date = st.sidebar.date_input("End Date")
-
-
-# ==================================================
-# PROCESS
-# ==================================================
-
-if (
-    resources_file
-    and toggl_file
-    and novelties_file
-    and camplegal_file
-    and smokeball_file
-    and clg_novelties_file
-    and attendance_file
-):
-    daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user_map = process_files(
-        toggl_file,
-        camplegal_file,
-        smokeball_file,
-        resources_file,
-        novelties_file,
-        clg_novelties_file,
-        start_date,
-        end_date,
-    )
-
-    attendance_comparison = pd.DataFrame()
-
-    if attendance_file:
-        df_uatt = pd.read_excel(attendance_file, sheet_name="NewUATT", engine="openpyxl")
-        df_adp = pd.read_excel(attendance_file, sheet_name="NewADP", engine="openpyxl")
-
-        attendance_uatt = (
-            df_uatt[["DATE", "Corrected Name", "Hours worked"]].copy()
-        )
-
-        attendance_uatt.columns = ["Date", "User", "Attendance_Hours"]
-
-        attendance_adp = (
-            df_adp[["Date", "Corrected Name", "Hours worked"]].copy()
-        )
-
-        attendance_adp.columns = ["Date", "User", "Attendance_Hours"]
-
-        attendance_all = pd.concat(
-            [attendance_uatt, attendance_adp],
-            ignore_index=True,
-        )
-
-        attendance_all["Date"] = (
-            pd.to_datetime(attendance_all["Date"], errors="coerce").dt.floor("D")
-        )
-
-        attendance_all["Attendance_Hours"] = pd.to_numeric(
-            attendance_all["Attendance_Hours"], errors="coerce"
-        ).fillna(0)
-
-        attendance_all = attendance_all[
-            (attendance_all["Date"] >= pd.to_datetime(start_date))
-            & (
-                attendance_all["Date"]
-                <= (
-                    pd.to_datetime(end_date)
-                    + pd.Timedelta(days=1)
-                    - pd.Timedelta(seconds=1)
-                )
-            )
-        ]
-
-        platform_hours = (
-            daily_report[["Work_Date", "USER_CORRECT", "Total_Hours"]].copy()
-        )
-
-        platform_hours["Date"] = (
-            pd.to_datetime(platform_hours["Work_Date"]).dt.floor("D")
-        )
-
-        platform_hours = (
-            platform_hours[["Date", "USER_CORRECT", "Total_Hours"]]
-            .rename(
-                columns={
-                    "USER_CORRECT": "User",
-                    "Total_Hours": "Platform_Hours",
-                }
-            )
-        )
-
-        attendance_all["NORMALIZED_USER"] = (
-            attendance_all["User"]
-            .astype(str)
-            .apply(normalize_name)
-        )
-
-        attendance_all["USER_CORRECT"] = (
-            attendance_all["NORMALIZED_USER"]
-            .map(user_map)
-            .fillna(attendance_all["User"])
-        )
-
-        platform_hours["NORMALIZED_USER"] = (
-            platform_hours["User"]
-            .astype(str)
-            .apply(normalize_name)
-        )
-
-        platform_hours["USER_CORRECT"] = (
-            platform_hours["NORMALIZED_USER"]
-            .map(user_map)
-            .fillna(platform_hours["User"])
-        )
-
-        attendance_comparison = attendance_all.merge(
-            platform_hours,
-            on=[
-                "Date",
-                "USER_CORRECT"
-            ],
-            how="left",
-        )
-
-        attendance_comparison.rename(
-            columns={
-                "USER_CORRECT": "User"
-            },
-            inplace=True
-        )
-
-        attendance_comparison["Platform_Hours"] = (
-            attendance_comparison["Platform_Hours"].fillna(0)
-        )
-
-        attendance_comparison["Difference_Hours"] = (
-            attendance_comparison["Platform_Hours"]
-            - attendance_comparison["Attendance_Hours"]
-        )
-
-        attendance_comparison["Difference_Pct"] = (
-            attendance_comparison["Difference_Hours"]
-            .abs()
-            .div(attendance_comparison["Attendance_Hours"].replace(0, np.nan))
-            * 100
-        )
-
-        attendance_comparison["Status"] = np.where(
-            attendance_comparison["Difference_Pct"] <= 10,
-            "✅ Match",
-            "🚨 Review",
-        )
-
-        attendance_comparison["Justified"] = "NO"
-
-        justified_records = compliance_engine[
-            compliance_engine["Status"]
-            .astype(str)
-            .str.startswith("🟡")
-        ].copy()
-
-        justified_records = justified_records[
-            [
-                "Date",
-                "User"
-            ]
-        ].drop_duplicates()
-
-        justified_records["Date"] = pd.to_datetime(
-            justified_records["Date"],
-            errors="coerce"
-        ).dt.floor("D")
-
-        justified_records["User"] = (
-            justified_records["User"]
-            .apply(normalize_name)
-        )
-
-        attendance_comparison["Date"] = pd.to_datetime(
-            attendance_comparison["Date"],
-            errors="coerce"
-        ).dt.floor("D")
-
-        attendance_comparison = attendance_comparison.merge(
-            justified_records.assign(Justified="YES"),
-            on=[
-                "Date",
-                "User"
-            ],
-            how="left",
-            suffixes=("", "_RRHH")
-        )
-
-        attendance_comparison["Justified"] = np.where(
-            attendance_comparison["Justified_RRHH"] == "YES",
-            "YES",
-            "NO"
-        )
-
-        attendance_comparison.drop(
-            columns=["Justified_RRHH"],
-            inplace=True,
-            errors="ignore"
-        )
-
-    total_users = users_summary["USER_CORRECT"].nunique()
-
-    # =========================================
-    # CÁLCULO DE MÉTRICAS
-    # =========================================
-    compliant_days = len(
-        compliance_engine[compliance_engine["Status"] == "✅ Cumple"]
-    )
-
-    non_compliant_days = len(
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
-        ]
-    )
-
-    justified_days = len(
-        compliance_engine[
-            compliance_engine["Status"].astype(str).str.startswith("🟡")
-        ]
-    )
-
-    total_hours = round(users_summary["Total_Hours"].sum(), 2)
-
-    total_non_compliance = len(
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
-        ]
-    )
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("👥 Users", total_users)
-    c2.metric("✅ Compliant Days", compliant_days)
-    c3.metric("❌ Non Compliant Days", non_compliant_days)
-    c4.metric("🟡 Justified", justified_days)
-    c5.metric("⏱️ Total Hours", total_hours)
-
-    # =====================================
-    # NON COMPLIANCE
-    # =====================================
-
-    st.divider()
-    st.subheader("🚨 Non Compliant Records")
-
-    non_compliance = compliance_engine[
-        compliance_engine["Status"].isin(
-            ["❌ No registró tiempo", "❌ Horas insuficientes"]
-        )
-    ]
-
-    attendance_issues = attendance_comparison[
-        (
-            attendance_comparison["Status"] == "🚨 Review"
-        )
-        &
-        (
-            attendance_comparison["Justified"] == "NO"
-        )
-    ].copy()
-
-    attendance_issues["Incident_Type"] = (
-        "🚨 Attendance Mismatch"
-    )
-
-    attendance_issues = attendance_issues.rename(
-        columns={
-            "Status": "Incident_Status"
+        status = str(row.get('USER STATUS', '')).strip().lower()
+        if status != 'active':
+            continue
+        email = row.get('EMAIL')
+        if pd.isna(email) or str(email).strip().lower() in ('disabled', ''):
+            continue
+        key = normalizar_nombre(nombre)
+        cc = limpiar_emails(row.get('COPY_EMAIL_TG'))
+        mapa[key] = {
+            'nombre': str(nombre).strip(),
+            'prefix': str(row.get('PREFIX', '')).strip() if not pd.isna(row.get('PREFIX')) else '',
+            'email': str(email).strip(),
+            'cc': cc,
         }
-    )
+    return mapa
 
-    attendance_issues = attendance_issues[
-        [
-            "Date",
-            "User",
-            "Incident_Type",
-            "Incident_Status"
-        ]
-    ]
 
-    compliance_issues = non_compliance.copy()
+def procesar_y_enviar(df_names, df_inc, smtp_server, smtp_port, smtp_username, smtp_password,
+                     test_mode=False, dry_run=False):
+    resultados = []
+    mapa_usuarios = construir_mapa_usuarios(df_names)
 
-    compliance_issues["Incident_Type"] = (
-        "🚨 Compliance Issue"
-    )
+    if 'Member' not in df_inc.columns:
+        return False, f"Sheet '{HOJA_INCIDENTES}' has no 'Member' column. Columns: {list(df_inc.columns)}", []
 
-    compliance_issues = compliance_issues.rename(
-        columns={
-            "Status": "Incident_Status"
-        }
-    )
+    logo_bytes, logo_mime = get_logo_bytes()
+    logo_cid = "company_logo_cid" if logo_bytes else None
 
-    compliance_issues = compliance_issues[
-        [
-            "Date",
-            "User",
-            "Incident_Type",
-            "Incident_Status"
-        ]
-    ]
-
-    all_incidents = pd.concat(
-        [
-            compliance_issues,
-            attendance_issues
-        ],
-        ignore_index=True
-    )
-
-    all_incidents["Date"] = pd.to_datetime(
-        all_incidents["Date"],
-        errors="coerce"
-    ).dt.floor("D")
-    
-    incident_source = (
-        all_incidents
-        .groupby("User")["Incident_Type"]
-        .agg(lambda x: sorted(set(x)))
-    )
-
-    source_map = {}
-
-    for user, incident_types in incident_source.items():
-
-        has_compliance = (
-            "🚨 Compliance Issue"
-            in incident_types
-        )
-
-        has_attendance = (
-            "🚨 Attendance Mismatch"
-            in incident_types
-        )
-
-        if has_compliance and has_attendance:
-
-            source_map[user] = "Mixed"
-
-        elif has_compliance:
-
-            source_map[user] = "Compliance"
-
-        elif has_attendance:
-
-            source_map[user] = "Attendance"
-
-        else:
-
-            source_map[user] = "Unknown"
-
-    # =====================================
-    # NOTIFICATION QUEUE
-    # =====================================
-
-    notification_queue = (
-        all_incidents
-        .groupby("User")
-        .agg(
-            Incidents=("Date", "count")
-        )
-        .reset_index()
-    )
-
-    notification_queue["Source"] = (
-        notification_queue["User"]
-        .map(source_map)
-    )
-
-    notification_queue = notification_queue.merge(
-        employee_info,
-        left_on="User",
-        right_on="NAME CORRECT",
-        how="left",
-    )
-
-    # =====================================
-    # TABS
-    # =====================================
-
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        [
-            "🚨 Compliance Engine",
-            "📋 Activity Detail",
-            "👥 Users Summary",
-            "📊 Compliance Summary",
-            "🕒 Attendance Match",
-            "📧 Notifications Center",
-        ]
-    )
-
-    # =====================================
-    # TAB 1 - COMPLIANCE ENGINE
-    # =====================================
-
-    with tab1:
-        st.subheader("Compliance Engine")
-
-        compliance_filter = st.selectbox(
-            "Compliance Status",
-            ["All", "✅ Cumple", "❌ No registró tiempo", "❌ Horas insuficientes"],
-        )
-
-        compliance_users = sorted(
-            compliance_engine["User"].dropna().unique().tolist()
-        )
-        selected_compliance_user = st.selectbox(
-            "Search User",
-            ["All Users"] + compliance_users,
-        )
-
-        engine = compliance_engine.copy()
-
-        if compliance_filter != "All":
-            engine = engine[engine["Status"] == compliance_filter]
-
-        if selected_compliance_user != "All Users":
-            engine = engine[engine["User"] == selected_compliance_user]
-
-        st.dataframe(
-            engine[["Date", "User", "Hours Worked", "Novelty", "Status"]],
-            use_container_width=True,
-        )
-
-    # =====================================
-    # TAB 2 - ACTIVITY DETAIL
-    # =====================================
-
-    with tab2:
-        st.subheader("Activity Detail")
-
-        users_list = sorted(
-            detail_report["USER_CORRECT"].dropna().unique().tolist()
-        )
-
-        selected_user = st.selectbox(
-            "Search User",
-            ["All Users"] + users_list,
-        )
-
-        detail_view = detail_report.copy()
-        if selected_user != "All Users":
-            detail_view = detail_view[detail_view["USER_CORRECT"] == selected_user]
-
-        st.dataframe(
-            detail_view[["Date1", "USER_CORRECT", "Activity", "Hours", "Source"]],
-            use_container_width=True,
-        )
-
-    # =====================================
-    # TAB 3 - USERS SUMMARY
-    # =====================================
-
-    with tab3:
-        st.subheader("Total Hours by User")
-        st.dataframe(
-            users_summary[
-                [
-                    "USER_CORRECT",
-                    "COMPANY",
-                    "DEPARTMENT",
-                    "TEAM",
-                    "Entries",
-                    "Total_Hours",
-                ]
-            ],
-            use_container_width=True,
-        )
-
-        fig_users = px.bar(
-            users_summary.head(25),
-            x="USER_CORRECT",
-            y="Total_Hours",
-            title="Top Users by Hours",
-        )
-        st.plotly_chart(fig_users, use_container_width=True)
-
-    # =====================================
-    # TAB 4 - COMPLIANCE SUMMARY
-    # =====================================
-
-    with tab4:
-        st.subheader("Compliance Summary By User")
-        summary_view = compliance_summary.copy()
-
-        summary_users = sorted(summary_view["User"].dropna().unique().tolist())
-        selected_summary_user = st.selectbox(
-            "Search User (Summary)",
-            ["All Users"] + summary_users,
-        )
-
-        if selected_summary_user != "All Users":
-            summary_view = summary_view[summary_view["User"] == selected_summary_user]
-
-        cols_per_row = 6
-
-        for i in range(0, len(summary_view), cols_per_row):
-            cols = st.columns(cols_per_row)
-
-            for j in range(cols_per_row):
-                if i + j >= len(summary_view):
-                    continue
-
-                row = summary_view.iloc[i + j]
-                non_compliant = int(row["Non_Compliant_Days"])
-                border_color = "#e74c3c" if non_compliant > 0 else "#27ae60"
-                icon = "❌" if non_compliant > 0 else "✅"
-
-                with cols[j]:
-                    card_background = (
-                        "#e8f5e9" if non_compliant == 0 else "#fdeaea"
-                    )
-                    card_border = (
-                        "#2e7d32" if non_compliant == 0 else "#d32f2f"
-                    )
-
-                    st.markdown(
-                        f"""
-                        <div style="
-                            background: {card_background};
-                            border: 2px solid {card_border};
-                            border-radius: 12px;
-                            padding: 10px;
-                            margin-bottom: 10px;
-                        ">
-                            <b>{icon} {row['User']}</b><br><br>
-                            ⏱️ {row['Total_Hours']:.2f} hrs<br>
-                            📅 {int(row['Days_Evaluated'])} días<br>
-                            ✅ {int(row['Compliant_Days'])}<br>
-                            ❌ {int(row['Non_Compliant_Days'])}<br>
-                            🟡 {int(row['Justified_Days'])}<br>
-                            <hr>
-                            <b>Incidencias:</b><br>
-                            {row['Failed_Dates']}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-    # =====================================
-    # TAB 5 - ATTENDANCE MATCH
-    # =====================================
-
-    with tab5:
-        st.subheader("Platform vs Attendance")
-
-        if len(attendance_comparison) > 0:
-            st.dataframe(
-                attendance_comparison[
-                    [
-                        "Date",
-                        "User",
-                        "Attendance_Hours",
-                        "Platform_Hours",
-                        "Difference_Hours",
-                        "Difference_Pct",
-                        "Status",
-                        "Justified"
-                    ]
-                ],
-                use_container_width=True,
-            )
-        else:
-            st.info("Upload ADP & UAttend file to enable comparison.")
-
-    # =====================================
-    # TAB 6 - NOTIFICATIONS CENTER
-    # =====================================
-
-    with tab6:
-        st.subheader("📧 Notifications Center")
-
-        test_mode = st.checkbox(
-            "🧪 Test Mode (Data Team)",
-            value=True
-        )
-
-        if len(notification_queue) == 0:
-            st.success("🎉 No users require notifications.")
-
-        else:
-            excluded_users = st.multiselect(
-                "Exclude users from notifications",
-                sorted(
-                    notification_queue["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                ),
-            )
-
-            notification_view = (
-                notification_queue[
-                    ~notification_queue["User"].isin(excluded_users)
-                ]
-            )
-
-            st.dataframe(
-                notification_view[
-                    [
-                        "User",
-                        "Incidents",
-                        "Source",
-                        "EMAIL",
-                    ]
-                ],
-                use_container_width=True,
-            )
-
-            st.divider()
-
-            selected_notification_user = st.selectbox(
-                "Preview Email",
-                sorted(
-                    notification_view["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
-            )
-
-            preview_record = notification_view[
-                notification_view["User"] == selected_notification_user
-            ].iloc[0]
-
-            st.info(
-                f"Source: {preview_record['Source']}"
-            )
-
-            TEST_EMAIL = "data.analyst7@communitylawgroup.com"
-
-            cc_list = []
-
-            for col in [
-                "COPY_EMAIL_SB",
-                "COPY_EMAIL_TG",
-                "COPY_EMAIL_CL"
-            ]:
-                value = preview_record.get(col)
-
-                if pd.notna(value):
-                    value = str(value).strip()
-
-                    if value != "":
-                        cc_list.append(value)
-
-            cc_list = sorted(list(set(cc_list)))
-
-            user_incidents = all_incidents[
-                all_incidents["User"] == selected_notification_user
-            ].sort_values("Date")
-
-            # =====================================
-            # BUILD INCIDENT DETAILS
-            # =====================================
-
-            incident_details = []
-
-            for _, row in user_incidents.iterrows():
-
-                incident_date = row["Date"]
-
-                if row["Incident_Type"] == "🚨 Compliance Issue":
-
-                    compliance_row = compliance_engine[
-                        (compliance_engine["User"] == selected_notification_user)
-                        &
-                        (
-                            pd.to_datetime(compliance_engine["Date"])
-                            == pd.to_datetime(incident_date)
-                        )
-                    ]
-
-                    if len(compliance_row) > 0:
-
-                        compliance_row = compliance_row.iloc[0]
-
-                        incident_details.append(
-                            f"""
-Date: {incident_date}
-Type: Compliance
-Hours Worked: {compliance_row['Hours Worked']}
-Hours Required: {compliance_row['Hours Required']}
-Issue: {compliance_row['Status']}
-"""
-                        )
-
-                elif row["Incident_Type"] == "🚨 Attendance Mismatch":
-
-                    attendance_row = attendance_comparison[
-                        (attendance_comparison["User"] == selected_notification_user)
-                        &
-                        (
-                            pd.to_datetime(attendance_comparison["Date"])
-                            == pd.to_datetime(incident_date)
-                        )
-                    ]
-
-                    if len(attendance_row) > 0:
-
-                        attendance_row = attendance_row.iloc[0]
-
-                        incident_details.append(
-                            f"""
-Date: {incident_date}
-Type: Attendance
-Attendance Hours: {attendance_row['Attendance_Hours']}
-Platform Hours: {attendance_row['Platform_Hours']}
-Difference Hours: {attendance_row['Difference_Hours']}
-Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row.index else '🚨 Review'}
-"""
-                        )
-
-            incident_text = "\n----------------------------------------\n".join(
-                incident_details
-            )
-
-            if test_mode:
-                subject = (
-                    "[TEST] Time Control Platform - Non Compliance Alert"
-                )
-            else:
-                subject = (
-                    "Time Control Platform - Non Compliance Alert"
-                )
-
-            body = f"""
-Hello {selected_notification_user},
-
-The Time Control Platform identified {len(user_incidents)} incident(s) during the selected period.
-
-{incident_text}
-
-Please review your records and make any necessary corrections.
-
-If you believe a record is incorrect, please contact your supervisor or the Data Team.
-
-Regards,
-
-Time Control Platform
-"""
-
-            if test_mode:
-                destination_email = TEST_EMAIL
-            else:
-                destination_email = preview_record["EMAIL"]
-
-            st.markdown("### Email Preview")
-
-            st.text_input(
-                "TO",
-                value=destination_email,
-                disabled=True
-            )
-
-            if test_mode:
-                st.info(
-                    f"Original recipient: {preview_record['EMAIL']}"
-                )
-
-            st.text_area(
-                "CC",
-                value="; ".join(cc_list),
-                height=80,
-                disabled=True
-            )
-
-            st.text_input(
-                "SUBJECT",
-                value=subject,
-                disabled=True
-            )
-
-            st.text_area(
-                "BODY",
-                value=body,
-                height=250
-            )
-
-            st.divider()
-
-            if st.button("🧪 Send Test Email"):
-                success, message = send_test_email(
-                    recipient="data.analyst7@communitylawgroup.com",
-                    subject=subject,
-                    body=body
-                )
-
-                if success:
-                    st.success("✅ Test email sent successfully.")
-                else:
-                    st.error(f"❌ SMTP Error: {message}")
-
-    # =====================================
-    # NON COMPLIANCE TABLE
-    # =====================================
-
-    if len(non_compliance) > 0:
-        st.dataframe(
-            non_compliance[["Date", "User", "Hours Worked", "Status"]],
-            use_container_width=True,
+    df_inc = df_inc.copy()
+    if 'Corrected Name' in df_inc.columns:
+        df_inc['_match_name'] = df_inc['Corrected Name'].where(
+            df_inc['Corrected Name'].notna() & (df_inc['Corrected Name'].astype(str).str.strip() != ''),
+            df_inc['Member']
         )
     else:
-        st.success("🎉 No non-compliant records found!")
+        df_inc['_match_name'] = df_inc['Member']
 
+    df_inc['_member_key'] = df_inc['_match_name'].apply(normalizar_nombre)
+    df_inc = df_inc[df_inc['_member_key'] != '']
+
+    grupos = df_inc.groupby('_member_key', sort=True)
+
+    for member_key, df_usuario in grupos:
+        info = mapa_usuarios.get(member_key)
+
+        if info is None:
+            nombre_original = df_usuario['_match_name'].iloc[0]
+            resultados.append({
+                'usuario': f"{nombre_original} (key: {member_key})",
+                'estado': '⚠️ Not found in Names or not Active',
+                'incidencias': len(df_usuario),
+                'to': '-',
+                'cc': '-'
+            })
+            continue
+
+        if test_mode:
+            to_emails = [smtp_username] if smtp_username else []
+            cc_emails = []
+        else:
+            to_emails = [info['email']]
+            cc_emails = info['cc']
+
+        if not to_emails:
+            resultados.append({
+                'usuario': info['nombre'],
+                'estado': '⚠️ No recipient',
+                'incidencias': len(df_usuario),
+                'to': '-',
+                'cc': '-'
+            })
+            continue
+
+        asunto = f"Toggl Incident Report — {info['nombre']}"
+        if test_mode:
+            asunto = f"[TEST] {asunto}"
+
+        html = generar_html_incidencias(info, df_usuario, logo_cid)
+
+        if dry_run:
+            resultados.append({
+                'usuario': info['nombre'],
+                'estado': '🧪 Simulated',
+                'incidencias': len(df_usuario),
+                'to': ', '.join(to_emails),
+                'cc': ', '.join(cc_emails) if cc_emails else '-'
+            })
+            continue
+
+        ok, err = enviar_correo(smtp_server, smtp_port, smtp_username, smtp_password,
+                                to_emails, cc_emails, asunto, html, logo_bytes)
+        resultados.append({
+            'usuario': info['nombre'],
+            'estado': '✅ Sent' if ok else f'❌ {err[:80]}',
+            'incidencias': len(df_usuario),
+            'to': ', '.join(to_emails),
+            'cc': ', '.join(cc_emails) if cc_emails else '-'
+        })
+        
+        time.sleep(0.5)
+
+    enviados = sum(1 for r in resultados if r['estado'].startswith('✅'))
+    simulados = sum(1 for r in resultados if r['estado'].startswith('🧪'))
+    advertencias = sum(1 for r in resultados if r['estado'].startswith('⚠️'))
+    errores = len(resultados) - enviados - simulados - advertencias
+
+    if dry_run:
+        msg = f"🧪 Simulation: {simulados} emails would be sent | {advertencias} warnings | {errores} errors."
+    else:
+        msg = f"✅ {enviados} sent | ⚠️ {advertencias} warnings | ❌ {errores} errors."
+
+    return True, msg, resultados
+
+# ============================================================
+# INTERFAZ STREAMLIT
+# ============================================================
+
+banner = get_banner_base64()
+if banner:
+    st.image(banner, use_container_width=True)
 else:
-    st.info("📌 Upload all files to begin.")
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1a3a5c, #4a7c9c);
+        padding: 20px 30px; border-radius: 10px; margin-bottom: 20px;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">⚠️ Toggl Incident Notifier</h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 4px 0 0 0;">
+            Per-user incident detection and notification</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with st.sidebar:
+    st.markdown("### 📁 Data File")
+    uploaded_file = st.file_uploader(
+        "Upload the Excel file (sheets: Names + TogglFilterDB)",
+        type=['xlsx', 'xls']
+    )
+
+    st.markdown("---")
+    st.markdown("### 🧪 Test Mode")
+    test_mode = st.checkbox("Test mode (send everything to my email)", value=True)
+
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        btn_simular = st.button("📄 Simulate", use_container_width=True)
+    with col2:
+        btn_enviar = st.button("📨 Send", type="primary", use_container_width=True)
+
+    st.caption("🔒 Secure TLS · No storage")
+
+    # Validación visual de credenciales cargadas
+    if SMTP_SERVER and SMTP_PORT and SMTP_USERNAME and SMTP_PASSWORD:
+        st.success("✅ SMTP credentials loaded securely")
+    else:
+        st.error("⚠️ SMTP credentials not found. Please check your Streamlit Secrets.")
+
+if uploaded_file is not None:
+    try:
+        df_names, df_inc = cargar_hojas(uploaded_file)
+
+        st.markdown("### 📊 Data Summary")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Users (Names)", len(df_names))
+        c2.metric("Incidents (TogglFilterDB)", len(df_inc))
+        c3.metric("Users with incidents", df_inc['Member'].nunique() if 'Member' in df_inc.columns else 0)
+        c4.metric("Today", obtener_hora_local().strftime('%m/%d/%Y'))
+
+        with st.expander("👁️ Preview — Names (Active)"):
+            if 'USER STATUS' in df_names.columns:
+                df_active = df_names[df_names['USER STATUS'].astype(str).str.strip().str.lower() == 'active']
+            else:
+                df_active = df_names
+            cols_prev = [c for c in ['NAME CORRECT', 'PREFIX', 'EMAIL', 'COPY_EMAIL_TG'] if c in df_active.columns]
+            st.dataframe(df_active[cols_prev].head(20), use_container_width=True)
+
+        with st.expander("👁️ Preview — TogglFilterDB"):
+            st.dataframe(df_inc.head(20), use_container_width=True)
+
+        faltantes = [c for c in ['Member', 'Date', 'Duration', 'Type of incident'] if c not in df_inc.columns]
+        if faltantes:
+            st.warning(f"⚠️ Missing columns in TogglFilterDB: {faltantes}. "
+                       f"Current columns: {list(df_inc.columns)}")
+
+        if btn_simular or btn_enviar:
+            if not SMTP_SERVER or not SMTP_PORT or not SMTP_USERNAME or not SMTP_PASSWORD:
+                st.error("⚠️ No SMTP credentials found. Please configure them in Streamlit Secrets.")
+            else:
+                if btn_enviar and not test_mode:
+                    st.warning("🔴 REAL send enabled: emails will go to users and their CC.")
+                with st.spinner("Processing..."):
+                    ok, msg, resultados = procesar_y_enviar(
+                        df_names, df_inc,
+                        SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD,
+                        test_mode=test_mode,
+                        dry_run=btn_simular
+                    )
+                st.markdown("### 📋 Results")
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+                if resultados:
+                    st.dataframe(pd.DataFrame(resultados), use_container_width=True)
+
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+        st.code(traceback.format_exc())
+else:
+    st.info("📌 Upload the Excel file in the sidebar to begin.")
