@@ -40,9 +40,7 @@ def send_test_email(recipient, subject, body):
         msg["To"] = recipient
         msg["Subject"] = subject
 
-        msg.attach(
-            MIMEText(body, "plain")
-        )
+        msg.attach(MIMEText(body, "plain"))
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -150,14 +148,12 @@ def process_files(
     df_special_days["Fecha"] = pd.to_datetime(df_special_days["Fecha"], errors="coerce")
     df_clg_special_days["Fecha"] = pd.to_datetime(df_clg_special_days["Fecha"], errors="coerce")
 
-    # Normalizar columnas para días especiales
     df_special_days["PERSONA_NORMALIZADA"] = df_special_days["Persona"].astype(str).apply(normalize_name)
     df_special_days["TIPO_NORMALIZADO"] = df_special_days["Tipo de Novedad"].astype(str).str.upper().str.strip()
 
     df_clg_special_days["PERSONA_NORMALIZADA"] = df_clg_special_days["Persona"].astype(str).apply(normalize_name)
     df_clg_special_days["TIPO_NORMALIZADO"] = df_clg_special_days["Tipo de Novedad"].astype(str).str.upper().str.strip()
 
-    # Normalizar columnas para novedades CLG
     df_clg_novelties["PERSONA_NORMALIZADA"] = df_clg_novelties["Persona"].astype(str).apply(normalize_name)
 
     # =========================================
@@ -199,17 +195,9 @@ def process_files(
         - pd.Timedelta(seconds=1)
     )
 
-    df_toggl = df_toggl[
-        (df_toggl["Date1"] >= start_dt) & (df_toggl["Date1"] <= end_dt)
-    ]
-
-    df_camplegal = df_camplegal[
-        (df_camplegal["Date1"] >= start_dt) & (df_camplegal["Date1"] <= end_dt)
-    ]
-
-    df_smokeball = df_smokeball[
-        (df_smokeball["Date1"] >= start_dt) & (df_smokeball["Date1"] <= end_dt)
-    ]
+    df_toggl = df_toggl[(df_toggl["Date1"] >= start_dt) & (df_toggl["Date1"] <= end_dt)]
+    df_camplegal = df_camplegal[(df_camplegal["Date1"] >= start_dt) & (df_camplegal["Date1"] <= end_dt)]
+    df_smokeball = df_smokeball[(df_smokeball["Date1"] >= start_dt) & (df_smokeball["Date1"] <= end_dt)]
 
     # =========================================
     # HOURS
@@ -253,9 +241,7 @@ def process_files(
     # DAILY REPORT
     # =========================================
 
-    df_all_time["Work_Date"] = (
-        pd.to_datetime(df_all_time["Date1"]).dt.floor("D")
-    )
+    df_all_time["Work_Date"] = pd.to_datetime(df_all_time["Date1"]).dt.floor("D")
 
     daily_report = (
         df_all_time
@@ -335,9 +321,7 @@ def process_files(
             required_hours = 0
             holiday_assignments = pd.DataFrame()
 
-            # =========================================
             # VERIFICAR SI EL USUARIO ESTÁ EN FESTIVO (NO TRABAJA)
-            # =========================================
             holiday_user = df_special_days[
                 (df_special_days["PERSONA_NORMALIZADA"] == normalized_user)
                 & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
@@ -347,9 +331,7 @@ def process_files(
             if len(holiday_user) > 0:
                 continue
 
-            # =========================================
             # VERIFICAR DÍA FESTIVO (PARA TODOS)
-            # =========================================
             holiday_assignments = df_special_days[
                 (df_special_days["PERSONA_NORMALIZADA"] == "TODOS")
                 & (df_special_days["TIPO_NORMALIZADO"] == "FESTIVO")
@@ -369,15 +351,11 @@ def process_files(
                 else:
                     required_hours = 0
             else:
-                # =========================================
                 # LUNES A VIERNES
-                # =========================================
                 if weekday <= 4:
                     required_hours = 8
 
-                # =========================================
                 # SÁBADOS
-                # =========================================
                 elif weekday == 5:
                     if user_company == "MAX":
                         saturday_user = df_special_days[
@@ -402,27 +380,18 @@ def process_files(
                     else:
                         required_hours = 0
 
-                # =========================================
                 # DOMINGOS
-                # =========================================
                 else:
                     required_hours = 0
 
-            # =========================================
             # PRESTACIÓN DE SERVICIO
-            # =========================================
-
             is_service_contract = "PRESTACION" in user_contract
 
-            # =========================================
             # SI NO HAY HORAS REQUERIDAS, SALTAR
-            # =========================================
             if required_hours == 0:
                 continue
 
-            # =========================================
             # OBTENER HORAS TRABAJADAS
-            # =========================================
             day_record = daily_report[
                 (daily_report["USER_CORRECT"] == user)
                 & (daily_report["Work_Date"].dt.date == current_day.date())
@@ -432,9 +401,7 @@ def process_files(
             if len(day_record) > 0:
                 worked_hours = float(day_record["Total_Hours"].sum())
 
-            # =========================================
             # OBTENER NOVEDAD
-            # =========================================
             novelty = get_novelty_status(user, current_day, df_novelties)
 
             if novelty is None and user_company == "CLG":
@@ -446,9 +413,7 @@ def process_files(
                 if len(clg_novelty) > 0:
                     novelty = str(clg_novelty.iloc[0]["Tipo de Novedad"])
 
-            # =========================================
             # LÓGICA DE STATUS
-            # =========================================
             if is_service_contract:
                 status = "🟣 Prestación de servicio"
             elif novelty is not None:
@@ -493,9 +458,7 @@ def process_files(
 
     success_counts = (
         compliance_engine[
-            compliance_engine["Status"].isin(
-                ["✅ Cumple", "🟣 Prestación de servicio"]
-            )
+            compliance_engine["Status"].isin(["✅ Cumple", "🟣 Prestación de servicio"])
         ]
         .groupby("User")
         .size()
@@ -503,9 +466,7 @@ def process_files(
 
     failure_counts = (
         compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
+            compliance_engine["Status"].isin(["❌ No registró tiempo", "❌ Horas insuficientes"])
         ]
         .groupby("User")
         .size()
@@ -519,17 +480,9 @@ def process_files(
         .size()
     )
 
-    compliance_summary["Compliant_Days"] = (
-        compliance_summary["User"].map(success_counts).fillna(0)
-    )
-
-    compliance_summary["Non_Compliant_Days"] = (
-        compliance_summary["User"].map(failure_counts).fillna(0)
-    )
-
-    compliance_summary["Justified_Days"] = (
-        compliance_summary["User"].map(novelty_counts).fillna(0)
-    )
+    compliance_summary["Compliant_Days"] = compliance_summary["User"].map(success_counts).fillna(0)
+    compliance_summary["Non_Compliant_Days"] = compliance_summary["User"].map(failure_counts).fillna(0)
+    compliance_summary["Justified_Days"] = compliance_summary["User"].map(novelty_counts).fillna(0)
 
     daily_status = (
         compliance_engine
@@ -537,32 +490,22 @@ def process_files(
         .groupby("User")
         .apply(
             lambda df: " | ".join(
-                [
-                    f"{d.strftime('%m/%d')} {s}"
-                    for d, s in zip(df["Date"], df["Status"])
-                ]
+                [f"{d.strftime('%m/%d')} {s}" for d, s in zip(df["Date"], df["Status"])]
             )
         )
     )
 
-    compliance_summary["Daily_Status"] = (
-        compliance_summary["User"].map(daily_status).fillna("")
-    )
+    compliance_summary["Daily_Status"] = compliance_summary["User"].map(daily_status).fillna("")
 
-    # Calcular Failed_Dates para cada usuario
     failed_dates = (
         compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
+            compliance_engine["Status"].isin(["❌ No registró tiempo", "❌ Horas insuficientes"])
         ]
         .groupby("User")["Date"]
         .apply(lambda dates: ", ".join(d.strftime("%m/%d") for d in dates))
     )
 
-    compliance_summary["Failed_Dates"] = (
-        compliance_summary["User"].map(failed_dates).fillna("Ninguna")
-    )
+    compliance_summary["Failed_Dates"] = compliance_summary["User"].map(failed_dates).fillna("Ninguna")
 
     return daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user_map
 
@@ -608,7 +551,15 @@ if (
     and clg_novelties_file
     and attendance_file
 ):
-    daily_report, detail_report, users_summary, compliance_engine, compliance_summary, employee_info, user_map = process_files(
+    (
+        daily_report,
+        detail_report,
+        users_summary,
+        compliance_engine,
+        compliance_summary,
+        employee_info,
+        user_map,
+    ) = process_files(
         toggl_file,
         camplegal_file,
         smokeball_file,
@@ -619,251 +570,171 @@ if (
         end_date,
     )
 
+    # =========================================
+    # ATTENDANCE COMPARISON
+    # =========================================
+
     attendance_comparison = pd.DataFrame()
+    justified_records = pd.DataFrame()
 
-    if attendance_file:
-        df_uatt = pd.read_excel(attendance_file, sheet_name="NewUATT", engine="openpyxl")
-        df_adp = pd.read_excel(attendance_file, sheet_name="NewADP", engine="openpyxl")
+    df_uatt = pd.read_excel(attendance_file, sheet_name="NewUATT", engine="openpyxl")
+    df_adp = pd.read_excel(attendance_file, sheet_name="NewADP", engine="openpyxl")
 
-        attendance_uatt = (
-            df_uatt[["DATE", "Corrected Name", "Hours worked"]].copy()
+    attendance_uatt = df_uatt[["DATE", "Corrected Name", "Hours worked"]].copy()
+    attendance_uatt.columns = ["Date", "User", "Attendance_Hours"]
+
+    attendance_adp = df_adp[["Date", "Corrected Name", "Hours worked"]].copy()
+    attendance_adp.columns = ["Date", "User", "Attendance_Hours"]
+
+    attendance_all = pd.concat([attendance_uatt, attendance_adp], ignore_index=True)
+
+    attendance_all["Date"] = pd.to_datetime(attendance_all["Date"], errors="coerce").dt.floor("D")
+    attendance_all["Attendance_Hours"] = pd.to_numeric(attendance_all["Attendance_Hours"], errors="coerce").fillna(0)
+
+    attendance_all = attendance_all[
+        (attendance_all["Date"] >= pd.to_datetime(start_date))
+        & (
+            attendance_all["Date"]
+            <= (pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
         )
+    ]
 
-        attendance_uatt.columns = ["Date", "User", "Attendance_Hours"]
+    platform_hours = daily_report[["Work_Date", "USER_CORRECT", "Total_Hours"]].copy()
+    platform_hours["Date"] = pd.to_datetime(platform_hours["Work_Date"]).dt.floor("D")
+    platform_hours = platform_hours[["Date", "USER_CORRECT", "Total_Hours"]].rename(
+        columns={"USER_CORRECT": "User", "Total_Hours": "Platform_Hours"}
+    )
 
-        attendance_adp = (
-            df_adp[["Date", "Corrected Name", "Hours worked"]].copy()
-        )
+    attendance_all["NORMALIZED_USER"] = attendance_all["User"].astype(str).apply(normalize_name)
+    attendance_all["USER_CORRECT"] = attendance_all["NORMALIZED_USER"].map(user_map).fillna(attendance_all["User"])
 
-        attendance_adp.columns = ["Date", "User", "Attendance_Hours"]
+    platform_hours["NORMALIZED_USER"] = platform_hours["User"].astype(str).apply(normalize_name)
+    platform_hours["USER_CORRECT"] = platform_hours["NORMALIZED_USER"].map(user_map).fillna(platform_hours["User"])
 
-        attendance_all = pd.concat(
-            [attendance_uatt, attendance_adp],
-            ignore_index=True,
-        )
+    attendance_comparison = attendance_all.merge(
+        platform_hours,
+        on=["Date", "USER_CORRECT"],
+        how="left",
+    )
 
-        attendance_all["Date"] = (
-            pd.to_datetime(attendance_all["Date"], errors="coerce").dt.floor("D")
-        )
+    attendance_comparison.rename(columns={"USER_CORRECT": "User"}, inplace=True)
 
-        attendance_all["Attendance_Hours"] = pd.to_numeric(
-            attendance_all["Attendance_Hours"], errors="coerce"
-        ).fillna(0)
+    attendance_comparison["Platform_Hours"] = attendance_comparison["Platform_Hours"].fillna(0)
 
-        attendance_all = attendance_all[
-            (attendance_all["Date"] >= pd.to_datetime(start_date))
-            & (
-                attendance_all["Date"]
-                <= (
-                    pd.to_datetime(end_date)
-                    + pd.Timedelta(days=1)
-                    - pd.Timedelta(seconds=1)
-                )
-            )
+    attendance_comparison["Difference_Hours"] = (
+        attendance_comparison["Platform_Hours"] - attendance_comparison["Attendance_Hours"]
+    )
+
+    attendance_comparison["Difference_Pct"] = (
+        attendance_comparison["Difference_Hours"]
+        .abs()
+        .div(attendance_comparison["Attendance_Hours"].replace(0, np.nan))
+        * 100
+    )
+
+    attendance_comparison["Status"] = np.where(
+        attendance_comparison["Difference_Pct"] <= 10,
+        "✅ Match",
+        "🚨 Review",
+    )
+
+    attendance_comparison["Justified"] = "NO"
+
+    justified_records = compliance_engine[
+        compliance_engine["Status"].isin(["🟣 Prestación de servicio"])
+        | (compliance_engine["Status"].astype(str).str.startswith("🟡"))
+    ].copy()
+
+    justified_records = justified_records[["Date", "User", "Status"]].drop_duplicates()
+    justified_records["Date"] = pd.to_datetime(justified_records["Date"], errors="coerce").dt.floor("D")
+    justified_records["User"] = justified_records["User"].apply(normalize_name)
+
+    attendance_comparison["Date"] = pd.to_datetime(attendance_comparison["Date"], errors="coerce").dt.floor("D")
+
+    attendance_comparison = attendance_comparison.merge(
+        justified_records.assign(Justified="YES"),
+        on=["Date", "User"],
+        how="left",
+        suffixes=("", "_RRHH"),
+    )
+
+    attendance_comparison["Justified"] = np.where(
+        attendance_comparison["Justified_RRHH"] == "YES",
+        "YES",
+        "NO",
+    )
+
+    justified_lookup = (
+        justified_records
+        .drop_duplicates(subset=["Date", "User"])
+        .set_index(["Date", "User"])["Status"]
+        .to_dict()
+    )
+
+    attendance_comparison["Justification_Status"] = attendance_comparison.apply(
+        lambda row: justified_lookup.get((row["Date"], normalize_name(row["User"]))),
+        axis=1,
+    )
+
+    attendance_comparison["Status"] = np.where(
+        attendance_comparison["Justified"] == "YES",
+        attendance_comparison["Justification_Status"],
+        attendance_comparison["Status"],
+    )
+
+    attendance_comparison.drop(columns=["Justified_RRHH"], inplace=True, errors="ignore")
+
+    # Justified records sin horas de attendance
+    attendance_justified = justified_records.copy()
+    attendance_justified["Attendance_Hours"] = np.nan
+    attendance_justified["Platform_Hours"] = np.nan
+    attendance_justified["Difference_Hours"] = np.nan
+    attendance_justified["Difference_Pct"] = np.nan
+    attendance_justified["Justified"] = "YES"
+
+    attendance_justified = attendance_justified[
+        [
+            "Date",
+            "User",
+            "Attendance_Hours",
+            "Platform_Hours",
+            "Difference_Hours",
+            "Difference_Pct",
+            "Status",
+            "Justified",
         ]
+    ]
 
-        platform_hours = (
-            daily_report[["Work_Date", "USER_CORRECT", "Total_Hours"]].copy()
-        )
+    attendance_comparison = pd.concat(
+        [attendance_comparison, attendance_justified],
+        ignore_index=True,
+    )
 
-        platform_hours["Date"] = (
-            pd.to_datetime(platform_hours["Work_Date"]).dt.floor("D")
-        )
-
-        platform_hours = (
-            platform_hours[["Date", "USER_CORRECT", "Total_Hours"]]
-            .rename(
-                columns={
-                    "USER_CORRECT": "User",
-                    "Total_Hours": "Platform_Hours",
-                }
-            )
-        )
-
-        attendance_all["NORMALIZED_USER"] = (
-            attendance_all["User"]
-            .astype(str)
-            .apply(normalize_name)
-        )
-
-        attendance_all["USER_CORRECT"] = (
-            attendance_all["NORMALIZED_USER"]
-            .map(user_map)
-            .fillna(attendance_all["User"])
-        )
-
-        platform_hours["NORMALIZED_USER"] = (
-            platform_hours["User"]
-            .astype(str)
-            .apply(normalize_name)
-        )
-
-        platform_hours["USER_CORRECT"] = (
-            platform_hours["NORMALIZED_USER"]
-            .map(user_map)
-            .fillna(platform_hours["User"])
-        )
-
-        attendance_comparison = attendance_all.merge(
-            platform_hours,
-            on=[
-                "Date",
-                "USER_CORRECT"
-            ],
-            how="left",
-        )
-
-        attendance_comparison.rename(
-            columns={
-                "USER_CORRECT": "User"
-            },
-            inplace=True
-        )
-
-        attendance_comparison["Platform_Hours"] = (
-            attendance_comparison["Platform_Hours"].fillna(0)
-        )
-
-        attendance_comparison["Difference_Hours"] = (
-            attendance_comparison["Platform_Hours"]
-            - attendance_comparison["Attendance_Hours"]
-        )
-
-        attendance_comparison["Difference_Pct"] = (
-            attendance_comparison["Difference_Hours"]
-            .abs()
-            .div(attendance_comparison["Attendance_Hours"].replace(0, np.nan))
-            * 100
-        )
-
-        attendance_comparison["Status"] = np.where(
-            attendance_comparison["Difference_Pct"] <= 10,
-            "✅ Match",
-            "🚨 Review",
-        )
-
-        attendance_comparison["Justified"] = "NO"
-
-        justified_records = compliance_engine[
-            compliance_engine["Status"].isin(
-                [
-                    "🟣 Prestación de servicio"
-                ]
-            )
-            |
-            (
-                compliance_engine["Status"]
-                .astype(str)
-                .str.startswith("🟡")
-            )
-        ].copy()
-
-        justified_records = justified_records[
-            [
-                "Date",
-                "User",
-                "Status"
-            ]
-        ].drop_duplicates()
-
-        justified_records["Date"] = pd.to_datetime(
-            justified_records["Date"],
-            errors="coerce"
-        ).dt.floor("D")
-
-        justified_records["User"] = (
-            justified_records["User"]
-            .apply(normalize_name)
-        )
-
-        attendance_comparison["Date"] = pd.to_datetime(
-            attendance_comparison["Date"],
-            errors="coerce"
-        ).dt.floor("D")
-
-        attendance_comparison = attendance_comparison.merge(
-            justified_records.assign(Justified="YES"),
-            on=[
-                "Date",
-                "User"
-            ],
-            how="left",
-            suffixes=("", "_RRHH")
-        )
-
-        attendance_comparison["Justified"] = np.where(
-            attendance_comparison["Justified_RRHH"] == "YES",
-            "YES",
-            "NO"
-        )
-
-        justified_lookup = (
-            justified_records
-            .drop_duplicates(
-                subset=["Date", "User"]
-            )
-            .set_index(
-                ["Date", "User"]
-            )["Status"]
-            .to_dict()
-        )
-
-        attendance_comparison["Justification_Status"] = (
-            attendance_comparison.apply(
-                lambda row: justified_lookup.get(
-                    (
-                        row["Date"],
-                        normalize_name(row["User"])
-                    )
-                ),
-                axis=1
-            )
-        )
-
-        attendance_comparison["Status"] = np.where(
-            attendance_comparison["Justified"] == "YES",
-            attendance_comparison["Justification_Status"],
-            attendance_comparison["Status"]
-        )
-
-        attendance_comparison.drop(
-            columns=["Justified_RRHH"],
-            inplace=True,
-            errors="ignore"
-        )
-
-    total_users = users_summary["USER_CORRECT"].nunique()
+    attendance_comparison = (
+        attendance_comparison
+        .sort_values(["Date", "User"])
+        .drop_duplicates(subset=["Date", "User"], keep="last")
+    )
 
     # =========================================
     # CÁLCULO DE MÉTRICAS
     # =========================================
-    compliant_days = len(
-        compliance_engine[compliance_engine["Status"] == "✅ Cumple"]
-    )
+
+    total_users = users_summary["USER_CORRECT"].nunique()
+
+    compliant_days = len(compliance_engine[compliance_engine["Status"] == "✅ Cumple"])
 
     non_compliant_days = len(
         compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
+            compliance_engine["Status"].isin(["❌ No registró tiempo", "❌ Horas insuficientes"])
         ]
     )
 
     justified_days = len(
-        compliance_engine[
-            compliance_engine["Status"].astype(str).str.startswith("🟡")
-        ]
+        compliance_engine[compliance_engine["Status"].astype(str).str.startswith("🟡")]
     )
 
     total_hours = round(users_summary["Total_Hours"].sum(), 2)
-
-    total_non_compliance = len(
-        compliance_engine[
-            compliance_engine["Status"].isin(
-                ["❌ No registró tiempo", "❌ Horas insuficientes"]
-            )
-        ]
-    )
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("👥 Users", total_users)
@@ -880,108 +751,40 @@ if (
     st.subheader("🚨 Non Compliant Records")
 
     non_compliance = compliance_engine[
-        compliance_engine["Status"].isin(
-            ["❌ No registró tiempo", "❌ Horas insuficientes"]
-        )
+        compliance_engine["Status"].isin(["❌ No registró tiempo", "❌ Horas insuficientes"])
     ]
 
     attendance_issues = attendance_comparison[
-        (
-            attendance_comparison["Status"] == "🚨 Review"
-        )
-        &
-        (
-            attendance_comparison["Justified"] == "NO"
-        )
+        (attendance_comparison["Status"] == "🚨 Review")
+        & (attendance_comparison["Justified"] == "NO")
     ].copy()
 
-    attendance_issues["Incident_Type"] = (
-        "🚨 Attendance Mismatch"
-    )
-
-    attendance_issues = attendance_issues.rename(
-        columns={
-            "Status": "Incident_Status"
-        }
-    )
-
-    attendance_issues = attendance_issues[
-        [
-            "Date",
-            "User",
-            "Incident_Type",
-            "Incident_Status"
-        ]
-    ]
+    attendance_issues["Incident_Type"] = "🚨 Attendance Mismatch"
+    attendance_issues = attendance_issues.rename(columns={"Status": "Incident_Status"})
+    attendance_issues = attendance_issues[["Date", "User", "Incident_Type", "Incident_Status"]]
 
     compliance_issues = non_compliance.copy()
+    compliance_issues["Incident_Type"] = "🚨 Compliance Issue"
+    compliance_issues = compliance_issues.rename(columns={"Status": "Incident_Status"})
+    compliance_issues = compliance_issues[["Date", "User", "Incident_Type", "Incident_Status"]]
 
-    compliance_issues["Incident_Type"] = (
-        "🚨 Compliance Issue"
-    )
+    all_incidents = pd.concat([compliance_issues, attendance_issues], ignore_index=True)
+    all_incidents["Date"] = pd.to_datetime(all_incidents["Date"], errors="coerce").dt.floor("D")
 
-    compliance_issues = compliance_issues.rename(
-        columns={
-            "Status": "Incident_Status"
-        }
-    )
-
-    compliance_issues = compliance_issues[
-        [
-            "Date",
-            "User",
-            "Incident_Type",
-            "Incident_Status"
-        ]
-    ]
-
-    all_incidents = pd.concat(
-        [
-            compliance_issues,
-            attendance_issues
-        ],
-        ignore_index=True
-    )
-
-    all_incidents["Date"] = pd.to_datetime(
-        all_incidents["Date"],
-        errors="coerce"
-    ).dt.floor("D")
-
-    incident_source = (
-        all_incidents
-        .groupby("User")["Incident_Type"]
-        .agg(lambda x: sorted(set(x)))
-    )
+    incident_source = all_incidents.groupby("User")["Incident_Type"].agg(lambda x: sorted(set(x)))
 
     source_map = {}
-
     for user, incident_types in incident_source.items():
-
-        has_compliance = (
-            "🚨 Compliance Issue"
-            in incident_types
-        )
-
-        has_attendance = (
-            "🚨 Attendance Mismatch"
-            in incident_types
-        )
+        has_compliance = "🚨 Compliance Issue" in incident_types
+        has_attendance = "🚨 Attendance Mismatch" in incident_types
 
         if has_compliance and has_attendance:
-
             source_map[user] = "Mixed"
-
         elif has_compliance:
-
             source_map[user] = "Compliance"
-
         elif has_attendance:
-
             source_map[user] = "Attendance"
-
         else:
-
             source_map[user] = "Unknown"
 
     # =====================================
@@ -991,16 +794,11 @@ if (
     notification_queue = (
         all_incidents
         .groupby("User")
-        .agg(
-            Incidents=("Date", "count")
-        )
+        .agg(Incidents=("Date", "count"))
         .reset_index()
     )
 
-    notification_queue["Source"] = (
-        notification_queue["User"]
-        .map(source_map)
-    )
+    notification_queue["Source"] = notification_queue["User"].map(source_map)
 
     notification_queue = notification_queue.merge(
         employee_info,
@@ -1036,19 +834,12 @@ if (
             ["All", "✅ Cumple", "❌ No registró tiempo", "❌ Horas insuficientes"],
         )
 
-        compliance_users = sorted(
-            compliance_engine["User"].dropna().unique().tolist()
-        )
-        selected_compliance_user = st.selectbox(
-            "Search User",
-            ["All Users"] + compliance_users,
-        )
+        compliance_users = sorted(compliance_engine["User"].dropna().unique().tolist())
+        selected_compliance_user = st.selectbox("Search User", ["All Users"] + compliance_users)
 
         engine = compliance_engine.copy()
-
         if compliance_filter != "All":
             engine = engine[engine["Status"] == compliance_filter]
-
         if selected_compliance_user != "All Users":
             engine = engine[engine["User"] == selected_compliance_user]
 
@@ -1064,14 +855,8 @@ if (
     with tab2:
         st.subheader("Activity Detail")
 
-        users_list = sorted(
-            detail_report["USER_CORRECT"].dropna().unique().tolist()
-        )
-
-        selected_user = st.selectbox(
-            "Search User",
-            ["All Users"] + users_list,
-        )
+        users_list = sorted(detail_report["USER_CORRECT"].dropna().unique().tolist())
+        selected_user = st.selectbox("Search User", ["All Users"] + users_list)
 
         detail_view = detail_report.copy()
         if selected_user != "All Users":
@@ -1089,16 +874,7 @@ if (
     with tab3:
         st.subheader("Total Hours by User")
         st.dataframe(
-            users_summary[
-                [
-                    "USER_CORRECT",
-                    "COMPANY",
-                    "DEPARTMENT",
-                    "TEAM",
-                    "Entries",
-                    "Total_Hours",
-                ]
-            ],
+            users_summary[["USER_CORRECT", "COMPANY", "DEPARTMENT", "TEAM", "Entries", "Total_Hours"]],
             use_container_width=True,
         )
 
@@ -1119,10 +895,7 @@ if (
         summary_view = compliance_summary.copy()
 
         summary_users = sorted(summary_view["User"].dropna().unique().tolist())
-        selected_summary_user = st.selectbox(
-            "Search User (Summary)",
-            ["All Users"] + summary_users,
-        )
+        selected_summary_user = st.selectbox("Search User (Summary)", ["All Users"] + summary_users)
 
         if selected_summary_user != "All Users":
             summary_view = summary_view[summary_view["User"] == selected_summary_user]
@@ -1138,16 +911,11 @@ if (
 
                 row = summary_view.iloc[i + j]
                 non_compliant = int(row["Non_Compliant_Days"])
-                border_color = "#e74c3c" if non_compliant > 0 else "#27ae60"
                 icon = "❌" if non_compliant > 0 else "✅"
 
                 with cols[j]:
-                    card_background = (
-                        "#e8f5e9" if non_compliant == 0 else "#fdeaea"
-                    )
-                    card_border = (
-                        "#2e7d32" if non_compliant == 0 else "#d32f2f"
-                    )
+                    card_background = "#e8f5e9" if non_compliant == 0 else "#fdeaea"
+                    card_border = "#2e7d32" if non_compliant == 0 else "#d32f2f"
 
                     st.markdown(
                         f"""
@@ -1190,7 +958,7 @@ if (
                         "Difference_Hours",
                         "Difference_Pct",
                         "Status",
-                        "Justified"
+                        "Justified",
                     ]
                 ],
                 use_container_width=True,
@@ -1205,40 +973,22 @@ if (
     with tab6:
         st.subheader("📧 Notifications Center")
 
-        test_mode = st.checkbox(
-            "🧪 Test Mode (Data Team)",
-            value=True
-        )
+        test_mode = st.checkbox("🧪 Test Mode (Data Team)", value=True)
 
         if len(notification_queue) == 0:
             st.success("🎉 No users require notifications.")
-
         else:
             excluded_users = st.multiselect(
                 "Exclude users from notifications",
-                sorted(
-                    notification_queue["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                ),
+                sorted(notification_queue["User"].dropna().unique().tolist()),
             )
 
-            notification_view = (
-                notification_queue[
-                    ~notification_queue["User"].isin(excluded_users)
-                ]
-            )
+            notification_view = notification_queue[
+                ~notification_queue["User"].isin(excluded_users)
+            ]
 
             st.dataframe(
-                notification_view[
-                    [
-                        "User",
-                        "Incidents",
-                        "Source",
-                        "EMAIL",
-                    ]
-                ],
+                notification_view[["User", "Incidents", "Source", "EMAIL"]],
                 use_container_width=True,
             )
 
@@ -1246,39 +996,24 @@ if (
 
             selected_notification_user = st.selectbox(
                 "Preview Email",
-                sorted(
-                    notification_view["User"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
+                sorted(notification_view["User"].dropna().unique().tolist()),
             )
 
             preview_record = notification_view[
                 notification_view["User"] == selected_notification_user
             ].iloc[0]
 
-            st.info(
-                f"Source: {preview_record['Source']}"
-            )
+            st.info(f"Source: {preview_record['Source']}")
 
             TEST_EMAIL = "data.analyst7@communitylawgroup.com"
 
             cc_list = []
-
-            for col in [
-                "COPY_EMAIL_SB",
-                "COPY_EMAIL_TG",
-                "COPY_EMAIL_CL"
-            ]:
+            for col in ["COPY_EMAIL_SB", "COPY_EMAIL_TG", "COPY_EMAIL_CL"]:
                 value = preview_record.get(col)
-
                 if pd.notna(value):
                     value = str(value).strip()
-
                     if value != "":
                         cc_list.append(value)
-
             cc_list = sorted(list(set(cc_list)))
 
             user_incidents = all_incidents[
@@ -1292,24 +1027,19 @@ if (
             incident_details = []
 
             for _, row in user_incidents.iterrows():
-
                 incident_date = row["Date"]
 
                 if row["Incident_Type"] == "🚨 Compliance Issue":
-
                     compliance_row = compliance_engine[
                         (compliance_engine["User"] == selected_notification_user)
-                        &
-                        (
+                        & (
                             pd.to_datetime(compliance_engine["Date"])
                             == pd.to_datetime(incident_date)
                         )
                     ]
 
                     if len(compliance_row) > 0:
-
                         compliance_row = compliance_row.iloc[0]
-
                         incident_details.append(
                             f"""
 Date: {incident_date}
@@ -1321,20 +1051,16 @@ Issue: {compliance_row['Status']}
                         )
 
                 elif row["Incident_Type"] == "🚨 Attendance Mismatch":
-
                     attendance_row = attendance_comparison[
                         (attendance_comparison["User"] == selected_notification_user)
-                        &
-                        (
+                        & (
                             pd.to_datetime(attendance_comparison["Date"])
                             == pd.to_datetime(incident_date)
                         )
                     ]
 
                     if len(attendance_row) > 0:
-
                         attendance_row = attendance_row.iloc[0]
-
                         incident_details.append(
                             f"""
 Date: {incident_date}
@@ -1346,18 +1072,12 @@ Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row
 """
                         )
 
-            incident_text = "\n----------------------------------------\n".join(
-                incident_details
-            )
+            incident_text = "\n----------------------------------------\n".join(incident_details)
 
             if test_mode:
-                subject = (
-                    "[TEST] Time Control Platform - Non Compliance Alert"
-                )
+                subject = "[TEST] Time Control Platform - Non Compliance Alert"
             else:
-                subject = (
-                    "Time Control Platform - Non Compliance Alert"
-                )
+                subject = "Time Control Platform - Non Compliance Alert"
 
             body = f"""
 Hello {selected_notification_user},
@@ -1382,35 +1102,14 @@ Time Control Platform
 
             st.markdown("### Email Preview")
 
-            st.text_input(
-                "TO",
-                value=destination_email,
-                disabled=True
-            )
+            st.text_input("TO", value=destination_email, disabled=True)
 
             if test_mode:
-                st.info(
-                    f"Original recipient: {preview_record['EMAIL']}"
-                )
+                st.info(f"Original recipient: {preview_record['EMAIL']}")
 
-            st.text_area(
-                "CC",
-                value="; ".join(cc_list),
-                height=80,
-                disabled=True
-            )
-
-            st.text_input(
-                "SUBJECT",
-                value=subject,
-                disabled=True
-            )
-
-            st.text_area(
-                "BODY",
-                value=body,
-                height=250
-            )
+            st.text_area("CC", value="; ".join(cc_list), height=80, disabled=True)
+            st.text_input("SUBJECT", value=subject, disabled=True)
+            st.text_area("BODY", value=body, height=250)
 
             st.divider()
 
@@ -1418,7 +1117,7 @@ Time Control Platform
                 success, message = send_test_email(
                     recipient="data.analyst7@communitylawgroup.com",
                     subject=subject,
-                    body=body
+                    body=body,
                 )
 
                 if success:
