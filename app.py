@@ -761,7 +761,8 @@ if (
         justified_records = justified_records[
             [
                 "Date",
-                "User"
+                "User",
+                "Status"
             ]
         ].drop_duplicates()
 
