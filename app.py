@@ -745,9 +745,17 @@ if (
         attendance_comparison["Justified"] = "NO"
 
         justified_records = compliance_engine[
-            compliance_engine["Status"]
-            .astype(str)
-            .str.startswith("🟡")
+            compliance_engine["Status"].isin(
+                [
+                    "🟣 Prestación de servicio"
+                ]
+            )
+            |
+            (
+                compliance_engine["Status"]
+                .astype(str)
+                .str.startswith("🟡")
+            )
         ].copy()
 
         justified_records = justified_records[
@@ -786,6 +794,35 @@ if (
             attendance_comparison["Justified_RRHH"] == "YES",
             "YES",
             "NO"
+        )
+
+        justified_lookup = (
+            justified_records
+            .drop_duplicates(
+                subset=["Date", "User"]
+            )
+            .set_index(
+                ["Date", "User"]
+            )["Status"]
+            .to_dict()
+        )
+
+        attendance_comparison["Justification_Status"] = (
+            attendance_comparison.apply(
+                lambda row: justified_lookup.get(
+                    (
+                        row["Date"],
+                        normalize_name(row["User"])
+                    )
+                ),
+                axis=1
+            )
+        )
+
+        attendance_comparison["Status"] = np.where(
+            attendance_comparison["Justified"] == "YES",
+            attendance_comparison["Justification_Status"],
+            attendance_comparison["Status"]
         )
 
         attendance_comparison.drop(
@@ -909,7 +946,7 @@ if (
         all_incidents["Date"],
         errors="coerce"
     ).dt.floor("D")
-    
+
     incident_source = (
         all_incidents
         .groupby("User")["Incident_Type"]
