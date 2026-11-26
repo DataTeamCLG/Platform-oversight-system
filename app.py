@@ -645,7 +645,7 @@ if (
         | (compliance_engine["Status"].astype(str).str.startswith("🟡"))
     ].copy()
 
-    justified_records = justified_records[["Date", "User", "Status"]].drop_duplicates()
+    justified_records = justified_records[["Date", "User", "Status", "Hours Worked"]].drop_duplicates()
     justified_records["Date"] = pd.to_datetime(justified_records["Date"], errors="coerce").dt.floor("D")
     justified_records["USER_KEY"] = (
         justified_records["User"]
@@ -696,10 +696,16 @@ if (
     # Justified records sin horas de attendance
     attendance_justified = justified_records.copy()
     attendance_justified["Attendance_Hours"] = np.nan
-    attendance_justified["Platform_Hours"] = np.nan
+    attendance_justified["Platform_Hours"] = attendance_justified["Hours Worked"]
     attendance_justified["Difference_Hours"] = np.nan
     attendance_justified["Difference_Pct"] = np.nan
     attendance_justified["Justified"] = "YES"
+
+    attendance_justified.drop(
+        columns=["Hours Worked"],
+        inplace=True,
+        errors="ignore",
+    )
 
     attendance_justified = attendance_justified[
         [
