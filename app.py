@@ -762,11 +762,10 @@ if (
     # NON COMPLIANCE
     # =====================================
 
-    st.divider()
-    st.subheader("🚨 Non Compliant Records")
-
     non_compliance = compliance_engine[
-        compliance_engine["Status"].isin(["❌ No registró tiempo", "❌ Horas insuficientes"])
+        compliance_engine["Status"].isin(
+            ["❌ No registró tiempo", "❌ Horas insuficientes"]
+        )
     ]
 
     attendance_issues = attendance_comparison[
@@ -860,6 +859,22 @@ if (
 
         st.dataframe(
             engine[["Date", "User", "Hours Worked", "Novelty", "Status"]],
+            use_container_width=True,
+        )
+
+        st.markdown("---")
+
+        st.subheader("🚨 Non Compliant Records")
+
+        st.dataframe(
+            non_compliance[
+                [
+                    "Date",
+                    "User",
+                    "Hours Worked",
+                    "Status",
+                ]
+            ],
             use_container_width=True,
         )
 
@@ -1161,7 +1176,7 @@ Time Control Platform
                     st.error(f"❌ SMTP Error: {message}")
 
     # =====================================
-    # NON COMPLIANCE TABLE
+    # NON COMPLIANCE TABLE (global, fuera de tabs)
     # =====================================
 
     if len(non_compliance) > 0:
