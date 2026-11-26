@@ -1175,17 +1175,6 @@ Time Control Platform
                 else:
                     st.error(f"❌ SMTP Error: {message}")
 
-    # =====================================
-    # NON COMPLIANCE TABLE (global, fuera de tabs)
-    # =====================================
-
-    if len(non_compliance) > 0:
-        st.dataframe(
-            non_compliance[["Date", "User", "Hours Worked", "Status"]],
-            use_container_width=True,
-        )
-    else:
-        st.success("🎉 No non-compliant records found!")
 
 else:
     st.info("📌 Upload all files to begin.")
