@@ -948,8 +948,28 @@ if (
         st.subheader("Platform vs Attendance")
 
         if len(attendance_comparison) > 0:
+            attendance_users = sorted(
+                attendance_comparison["User"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+
+            selected_attendance_user = st.selectbox(
+                "Search User",
+                ["All Users"] + attendance_users,
+                key="attendance_user_filter",
+            )
+
+            attendance_view = attendance_comparison.copy()
+
+            if selected_attendance_user != "All Users":
+                attendance_view = attendance_view[
+                    attendance_view["User"] == selected_attendance_user
+                ]
+
             st.dataframe(
-                attendance_comparison[
+                attendance_view[
                     [
                         "Date",
                         "User",
