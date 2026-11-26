@@ -647,13 +647,22 @@ if (
 
     justified_records = justified_records[["Date", "User", "Status"]].drop_duplicates()
     justified_records["Date"] = pd.to_datetime(justified_records["Date"], errors="coerce").dt.floor("D")
-    justified_records["User"] = justified_records["User"].apply(normalize_name)
+    justified_records["USER_KEY"] = (
+        justified_records["User"]
+        .astype(str)
+        .apply(normalize_name)
+    )
 
     attendance_comparison["Date"] = pd.to_datetime(attendance_comparison["Date"], errors="coerce").dt.floor("D")
+    attendance_comparison["USER_KEY"] = (
+        attendance_comparison["User"]
+        .astype(str)
+        .apply(normalize_name)
+    )
 
     attendance_comparison = attendance_comparison.merge(
         justified_records.assign(Justified="YES"),
-        on=["Date", "User"],
+        on=["Date", "USER_KEY"],
         how="left",
         suffixes=("", "_RRHH"),
     )
