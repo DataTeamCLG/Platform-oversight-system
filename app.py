@@ -118,7 +118,10 @@ def generate_email_html(
     """
     Genera el HTML corporativo del correo a partir de los DataFrames
     de compliance y attendance ya filtrados por empleado.
+    Correo de ancho completo (no card centrada), azul corporativo #012338.
     """
+
+    BLUE = "#012338"
 
     # -------- Helpers internos --------
     def _status_class(status):
@@ -206,12 +209,12 @@ def generate_email_html(
         </div>
         """
 
-    # -------- Header con estilos inline --------
+    # -------- Header full-width --------
     header_html = f"""
     <div style="
-        background-color:#1a3a5c;
+        background-color:{BLUE};
         color:#ffffff;
-        padding:32px 40px 28px 40px;
+        padding:28px 40px;
         font-family:'Segoe UI','Roboto','Helvetica Neue',Arial,sans-serif;
     ">
         <div style="
@@ -250,7 +253,7 @@ def generate_email_html(
     </div>
     """
 
-    # -------- KPI cards como tabla (fila horizontal garantizada) --------
+    # -------- KPI cards en tabla (full-width, fila horizontal) --------
     kpi_html = f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
         width:100%;
@@ -263,10 +266,11 @@ def generate_email_html(
                 <div style="
                     background:#f0f4f8;
                     border:1px solid #dbe3ee;
-                    border-radius:10px;
+                    border-left:4px solid {BLUE};
+                    border-radius:6px;
                     padding:16px 18px;
                 ">
-                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{total_incidents}</div>
+                    <div style="font-size:26px; font-weight:700; color:{BLUE};">{total_incidents}</div>
                     <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Total Incidents</div>
                 </div>
             </td>
@@ -274,10 +278,11 @@ def generate_email_html(
                 <div style="
                     background:#f0f4f8;
                     border:1px solid #dbe3ee;
-                    border-radius:10px;
+                    border-left:4px solid {BLUE};
+                    border-radius:6px;
                     padding:16px 18px;
                 ">
-                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{len(compliance_df)}</div>
+                    <div style="font-size:26px; font-weight:700; color:{BLUE};">{len(compliance_df)}</div>
                     <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Compliance Issues</div>
                 </div>
             </td>
@@ -285,10 +290,11 @@ def generate_email_html(
                 <div style="
                     background:#f0f4f8;
                     border:1px solid #dbe3ee;
-                    border-radius:10px;
+                    border-left:4px solid {BLUE};
+                    border-radius:6px;
                     padding:16px 18px;
                 ">
-                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{len(attendance_df)}</div>
+                    <div style="font-size:26px; font-weight:700; color:{BLUE};">{len(attendance_df)}</div>
                     <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Attendance Mismatches</div>
                 </div>
             </td>
@@ -296,7 +302,7 @@ def generate_email_html(
     </table>
     """
 
-    # -------- HTML final --------
+    # -------- HTML final (full-width email) --------
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -305,21 +311,21 @@ def generate_email_html(
     <title>Time Control Platform - Incident Report</title>
     <style>
         * {{ margin:0; padding:0; box-sizing:border-box; }}
+        html, body {{
+            width:100%;
+            margin:0;
+            padding:0;
+            background-color:#ffffff;
+        }}
         body {{
             font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-            background-color:#eef2f6;
             line-height:1.5;
             color:#1a2a3a;
-            padding:16px;
         }}
-        .email-container {{
+
+        .email-wrapper {{
             width:100%;
-            max-width:1200px;
-            margin:0 auto;
-            background:#ffffff;
-            border-radius:14px;
-            overflow:hidden;
-            box-shadow:0 6px 24px rgba(15,35,60,0.10);
+            background-color:#ffffff;
         }}
 
         .greeting {{
@@ -331,23 +337,23 @@ def generate_email_html(
 
         .employee-section {{ padding:24px 40px 8px 40px; }}
         .employee-card {{
-            border:1px solid #e2e8f0; border-radius:12px;
+            border:1px solid #e2e8f0; border-radius:8px;
             margin-bottom:24px; overflow:hidden; background:#ffffff;
         }}
 
         .sub-block {{ padding:18px 22px 4px 22px; }}
         .sub-title {{
-            font-size:13px; font-weight:700; color:#1a3a5c;
+            font-size:13px; font-weight:700; color:{BLUE};
             text-transform:uppercase; letter-spacing:0.6px; margin-bottom:10px;
         }}
 
         .table-wrap {{
-            border:1px solid #e2e8f0; border-radius:10px;
+            border:1px solid #e2e8f0; border-radius:6px;
             overflow:hidden; margin-bottom:18px;
         }}
         .data-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
         .data-table th {{
-            background:#1a3a5c; color:#ffffff; font-weight:600;
+            background:{BLUE}; color:#ffffff; font-weight:600;
             padding:10px 14px; text-align:left; font-size:11px;
             letter-spacing:0.6px; text-transform:uppercase;
         }}
@@ -370,7 +376,7 @@ def generate_email_html(
 
         .notes-section {{
             margin:8px 40px 28px 40px; background:#f8fafc;
-            border-left:4px solid #2a5a8c; border-radius:8px; padding:18px 22px;
+            border-left:4px solid {BLUE}; border-radius:6px; padding:18px 22px;
         }}
         .notes-section strong {{
             font-size:13px; color:#1a2a3a; text-transform:uppercase; letter-spacing:0.6px;
@@ -381,7 +387,7 @@ def generate_email_html(
         .notes-section li {{ margin-bottom:4px; }}
 
         .email-footer {{
-            background:#1a3a5c; color:#ffffff; padding:22px 40px; text-align:center;
+            background:{BLUE}; color:#ffffff; padding:22px 40px; text-align:center;
         }}
         .footer-text {{ font-size:12px; opacity:0.9; margin-bottom:4px; }}
         .footer-note {{ font-size:10px; opacity:0.65; margin-top:6px; }}
@@ -396,7 +402,7 @@ def generate_email_html(
     </style>
 </head>
 <body>
-    <div class="email-container">
+    <div class="email-wrapper">
 
         {header_html}
 
@@ -1456,7 +1462,7 @@ if (
             st.text_input("SUBJECT", value=subject, disabled=True)
 
             st.markdown("### Email Preview (rendered)")
-            st.components.v1.html(body, height=1000, scrolling=True)
+            st.components.v1.html(body, height=1100, scrolling=True)
 
             st.markdown("### Email Preview (raw HTML)")
             st.text_area("BODY (raw HTML)", value=body, height=250)
