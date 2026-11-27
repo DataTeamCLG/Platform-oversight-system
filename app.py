@@ -110,97 +110,312 @@ def get_novelty_status(user, target_date, df_novelties):
 
 def generate_email_html(
     employee_name,
-    compliance_html,
-    attendance_html,
+    compliance_df,
+    attendance_df,
     start_date,
     end_date,
 ):
-    return f"""
-    <html>
+    """
+    Genera el HTML corporativo del correo a partir de los DataFrames
+    de compliance y attendance ya filtrados por empleado.
+    """
 
-    <body style="
-        font-family: Segoe UI, Arial, sans-serif;
-        background-color:#f4f6f9;
-        padding:20px;
-    ">
+    # -------- Helpers internos --------
+    def _status_class(status):
+        s = str(status).lower()
+        if "insuficiente" in s or "no registró" in s or "review" in s:
+            return "status-warning"
+        return "status-success"
 
-        <div style="
-            max-width:1000px;
-            margin:auto;
-            background:white;
-            border-radius:12px;
+    def _status_badge(status):
+        return f'<span class="{_status_class(status)}">{status}</span>'
+
+    # -------- Compliance rows --------
+    compliance_rows = ""
+    for _, row in compliance_df.iterrows():
+        compliance_rows += f"""
+        <tr>
+            <td>{row['Date']}</td>
+            <td class="num">{float(row['Hours Required']):.2f}</td>
+            <td class="num">{float(row['Hours Worked']):.2f}</td>
+            <td>{_status_badge(row['Status'])}</td>
+        </tr>
+        """
+
+    # -------- Attendance rows --------
+    attendance_rows = ""
+    for _, row in attendance_df.iterrows():
+        diff = row.get("Difference_Hours", 0)
+        try:
+            diff_val = float(diff) if pd.notna(diff) else 0.0
+        except Exception:
+            diff_val = 0.0
+        attendance_rows += f"""
+        <tr>
+            <td>{row['Date']}</td>
+            <td class="num">{float(row['Platform_Hours']):.2f}</td>
+            <td class="num">{float(row['Attendance_Hours']):.2f}</td>
+            <td class="num diff">{diff_val:.2f}</td>
+            <td>{_status_badge(row['Status'])}</td>
+        </tr>
+        """
+
+    # -------- KPIs --------
+    total_incidents = len(compliance_df) + len(attendance_df)
+
+    compliance_block = ""
+    if compliance_rows:
+        compliance_block = f"""
+        <div class="sub-block">
+            <div class="sub-title">📋 Compliance Incidents</div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Required</th>
+                            <th class="num">Reported</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>{compliance_rows}</tbody>
+                </table>
+            </div>
+        </div>
+        """
+
+    attendance_block = ""
+    if attendance_rows:
+        attendance_block = f"""
+        <div class="sub-block">
+            <div class="sub-title">🔄 Platform vs Attendance</div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Platform</th>
+                            <th class="num">Attendance</th>
+                            <th class="num">Difference</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>{attendance_rows}</tbody>
+                </table>
+            </div>
+        </div>
+        """
+
+    # -------- HTML final (mismo template corporativo) --------
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Control Platform - Incident Report</title>
+    <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background-color:#eef2f6;
+            line-height:1.5;
+            color:#1a2a3a;
+            padding:32px 20px;
+        }}
+        .email-container {{
+            max-width:1100px;
+            margin:0 auto;
+            background:#ffffff;
+            border-radius:14px;
             overflow:hidden;
-            box-shadow:0 2px 8px rgba(0,0,0,.12);
-        ">
+            box-shadow:0 6px 24px rgba(15,35,60,0.10);
+        }}
+        .email-header {{
+            background:linear-gradient(135deg,#1a3a5c 0%,#2a5a8c 100%);
+            color:#ffffff;
+            padding:32px 40px 28px 40px;
+        }}
+        .logo {{ font-size:24px; font-weight:700; letter-spacing:-0.3px; }}
+        .logo span {{ font-weight:400; opacity:0.85; }}
+        .report-subtitle {{ font-size:14px; opacity:0.85; margin-top:6px; }}
+        .header-meta {{
+            margin-top:18px; display:flex; gap:28px; flex-wrap:wrap; font-size:12px;
+        }}
+        .header-meta div {{ display:flex; align-items:baseline; gap:6px; }}
+        .header-meta .k {{ text-transform:uppercase; letter-spacing:0.8px; opacity:0.75; font-size:11px; }}
+        .header-meta .v {{ font-weight:600; font-size:13px; }}
 
-            <div style="
-                background:#eef3f8;
-                padding:25px;
-                border-bottom:1px solid #dbe3ee;
-            ">
+        .greeting {{
+            padding:28px 40px; background:#f8fafc; border-bottom:1px solid #e2e8f0;
+        }}
+        .greeting h2 {{ font-size:20px; font-weight:600; margin-bottom:10px; }}
+        .greeting p {{ font-size:14px; color:#3f5a78; line-height:1.65; margin-bottom:8px; }}
+        .greeting .highlight {{ font-weight:600; color:#1a2a3a; }}
 
-                <h1 style="
-                    margin:0;
-                    color:#1a2a3a;
-                    font-size:26px;
-                ">
-                    ⏱️ TIME CONTROL PLATFORM
-                </h1>
+        .kpi-row {{
+            display:flex; gap:16px; padding:24px 40px; background:#ffffff;
+            border-bottom:1px solid #e2e8f0; flex-wrap:wrap;
+        }}
+        .kpi-card {{
+            flex:1; min-width:160px; background:#f0f4f8; border:1px solid #dbe3ee;
+            border-radius:10px; padding:16px 18px;
+        }}
+        .kpi-value {{ font-size:26px; font-weight:700; color:#1a3a5c; }}
+        .kpi-label {{
+            font-size:11px; text-transform:uppercase; letter-spacing:0.8px;
+            color:#6a7e9e; margin-top:4px; font-weight:600;
+        }}
 
-                <p style="
-                    margin-top:8px;
-                    color:#4e6a87;
-                ">
-                    Incident Report
-                </p>
+        .employee-section {{ padding:24px 40px 8px 40px; }}
+        .employee-card {{
+            border:1px solid #e2e8f0; border-radius:12px;
+            margin-bottom:24px; overflow:hidden; background:#ffffff;
+        }}
+        .employee-header {{
+            background:#f0f4f8; padding:14px 22px; border-bottom:1px solid #e2e8f0;
+            display:flex; justify-content:space-between; align-items:center;
+            flex-wrap:wrap; gap:8px;
+        }}
+        .employee-name {{ font-size:15px; font-weight:700; color:#1a2a3a; }}
+        .employee-meta {{ font-size:12px; color:#6a7e9e; font-weight:500; }}
 
+        .sub-block {{ padding:18px 22px 4px 22px; }}
+        .sub-title {{
+            font-size:13px; font-weight:700; color:#1a3a5c;
+            text-transform:uppercase; letter-spacing:0.6px; margin-bottom:10px;
+        }}
+
+        .table-wrap {{
+            border:1px solid #e2e8f0; border-radius:10px;
+            overflow:hidden; margin-bottom:18px;
+        }}
+        .data-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+        .data-table th {{
+            background:#1a3a5c; color:#ffffff; font-weight:600;
+            padding:10px 14px; text-align:left; font-size:11px;
+            letter-spacing:0.6px; text-transform:uppercase;
+        }}
+        .data-table td {{
+            padding:11px 14px; border-bottom:1px solid #eef2f6; color:#2a3a4a;
+        }}
+        .data-table tr:last-child td {{ border-bottom:none; }}
+        .data-table tr:nth-child(even) td {{ background:#fafbfd; }}
+        .data-table .num {{ text-align:right; font-variant-numeric:tabular-nums; }}
+        .data-table .diff {{ font-weight:600; color:#c0392b; }}
+
+        .status-warning {{
+            color:#92400e; background:#fef3c7; padding:3px 10px;
+            border-radius:20px; font-weight:700; display:inline-block; font-size:11px;
+        }}
+        .status-success {{
+            color:#1e8449; background:#d5f5e3; padding:3px 10px;
+            border-radius:20px; font-weight:700; display:inline-block; font-size:11px;
+        }}
+
+        .notes-section {{
+            margin:8px 40px 28px 40px; background:#f8fafc;
+            border-left:4px solid #2a5a8c; border-radius:8px; padding:18px 22px;
+        }}
+        .notes-section strong {{
+            font-size:13px; color:#1a2a3a; text-transform:uppercase; letter-spacing:0.6px;
+        }}
+        .notes-section ul {{
+            margin:10px 0 0 18px; color:#4a6a8a; font-size:13px; line-height:1.8;
+        }}
+        .notes-section li {{ margin-bottom:4px; }}
+
+        .email-footer {{
+            background:#1a3a5c; color:#ffffff; padding:22px 40px; text-align:center;
+        }}
+        .footer-text {{ font-size:12px; opacity:0.9; margin-bottom:4px; }}
+        .footer-note {{ font-size:10px; opacity:0.65; margin-top:6px; }}
+
+        @media (max-width:700px) {{
+            .email-header, .greeting, .kpi-row, .employee-section, .notes-section, .email-footer {{
+                padding-left:20px; padding-right:20px;
+            }}
+            .notes-section {{ margin-left:20px; margin-right:20px; }}
+            .data-table th, .data-table td {{ padding:8px 10px; font-size:11px; }}
+            .kpi-card {{ min-width:100%; }}
+            .header-meta {{ gap:14px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-container">
+
+        <div class="email-header">
+            <div class="logo">⏱️ TIME CONTROL PLATFORM <span>· INCIDENT REPORT</span></div>
+            <div class="report-subtitle">Time Tracking Compliance Report</div>
+            <div class="header-meta">
+                <div><span class="k">Date</span><span class="v">{pd.Timestamp.today().strftime('%m/%d/%Y')}</span></div>
+                <div><span class="k">Period</span><span class="v">{start_date} — {end_date}</span></div>
+                <div><span class="k">Responsible</span><span class="v">{employee_name}</span></div>
             </div>
-
-            <div style="
-                padding:25px;
-            ">
-
-                <h3>
-                    Hello {employee_name},
-                </h3>
-
-                <p>
-                    The platform identified incidents during the selected period.
-                </p>
-
-                <p>
-                    <b>Period:</b>
-                    {start_date}
-                    -
-                    {end_date}
-                </p>
-
-                <hr>
-
-                {compliance_html}
-
-                <br><br>
-
-                {attendance_html}
-
-                <hr>
-
-                <p>
-                    Please review your records and make any necessary corrections.
-                </p>
-
-                <p>
-                    Time Control Platform
-                </p>
-
-            </div>
-
         </div>
 
-    </body>
+        <div class="greeting">
+            <h2>Hello {employee_name.split()[0] if employee_name.split() else "Team"},</h2>
+            <p>
+                As part of our continuous effort to improve time management, reporting accuracy,
+                and compliance across all tracking platforms, we are sharing the results identified
+                by the <strong>Time Control Platform</strong> for the period under review.
+            </p>
+            <p>
+                The purpose of this report is to help team members identify and correct any
+                time-tracking inconsistencies within <strong>24 hours</strong>, ensuring accurate
+                operational reporting and compliance with company standards.
+            </p>
+            <p class="highlight">
+                If corrections have already been completed, please disregard the corresponding observations.
+            </p>
+        </div>
 
-    </html>
-    """
+        <div class="kpi-row">
+            <div class="kpi-card">
+                <div class="kpi-value">{total_incidents}</div>
+                <div class="kpi-label">Total Incidents</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value">{len(compliance_df)}</div>
+                <div class="kpi-label">Compliance Issues</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value">{len(attendance_df)}</div>
+                <div class="kpi-label">Attendance Mismatches</div>
+            </div>
+        </div>
+
+        <div class="employee-section">
+            <div class="employee-card">
+                <div class="employee-header">
+                    <div class="employee-name">👤 {employee_name}</div>
+                    <div class="employee-meta">{total_incidents} incidents</div>
+                </div>
+                {compliance_block}
+                {attendance_block}
+            </div>
+        </div>
+
+        <div class="notes-section">
+            <strong>📌 Notes</strong>
+            <ul>
+                <li>Employees not listed in this report are considered <strong>fully compliant</strong> for the evaluated period.</li>
+                <li>Approved novelties, scheduled holidays, vacations, and authorized exceptions are <strong>automatically considered</strong> by the system when calculating compliance.</li>
+                <li>This report is generated automatically by the <strong>Time Control Platform</strong>.</li>
+            </ul>
+        </div>
+
+        <div class="email-footer">
+            <div class="footer-text">Time Control Platform · This report has been automatically generated</div>
+            <div class="footer-text">Quality Control & Efficiency · Community Law Group</div>
+            <div class="footer-note">© {pd.Timestamp.today().year} Community Law Group · All rights reserved</div>
+        </div>
+
+    </div>
+</body>
+</html>
+"""
 
 
 @st.cache_data
@@ -1165,102 +1380,26 @@ if (
                 all_incidents["User"] == selected_notification_user
             ].sort_values("Date")
 
-            user_compliance_incidents = compliance_engine[
-                (
-                    compliance_engine["User"]
-                    == selected_notification_user
-                )
-                &
-                (
+            # =====================================
+            # DATAFRAMES FILTRADOS PARA EL TEMPLATE
+            # =====================================
+
+            compliance_df_for_email = compliance_engine[
+                (compliance_engine["User"] == selected_notification_user)
+                & (
                     compliance_engine["Status"].isin(
-                        [
-                            "❌ No registró tiempo",
-                            "❌ Horas insuficientes"
-                        ]
+                        ["❌ No registró tiempo", "❌ Horas insuficientes"]
                     )
                 )
             ].copy()
 
-            compliance_table_rows = ""
-
-            for _, row in user_compliance_incidents.iterrows():
-                compliance_table_rows += f"""
-                <tr>
-                    <td>{row['Date']}</td>
-                    <td>{row['Hours Required']}</td>
-                    <td>{row['Hours Worked']}</td>
-                    <td>{row['Status']}</td>
-                </tr>
-                """
-
-            compliance_html = ""
-
-            if compliance_table_rows:
-                compliance_html = f"""
-                <h3>📋 Compliance Issues</h3>
-
-                <table border="1" cellpadding="6" cellspacing="0">
-
-                    <tr>
-                        <th>Date</th>
-                        <th>Required</th>
-                        <th>Worked</th>
-                        <th>Status</th>
-                    </tr>
-
-                    {compliance_table_rows}
-
-                </table>
-                """
-
-            user_attendance_incidents = attendance_comparison[
-                (
-                    attendance_comparison["User"]
-                    == selected_notification_user
-                )
-                &
-                (
-                    attendance_comparison["Status"]
-                    == "🚨 Review"
-                )
+            attendance_df_for_email = attendance_comparison[
+                (attendance_comparison["User"] == selected_notification_user)
+                & (attendance_comparison["Status"] == "🚨 Review")
             ].copy()
 
-            attendance_table_rows = ""
-
-            for _, row in user_attendance_incidents.iterrows():
-                attendance_table_rows += f"""
-                <tr>
-                    <td>{row['Date']}</td>
-                    <td>{row['Platform_Hours']}</td>
-                    <td>{row['Attendance_Hours']}</td>
-                    <td>{row['Difference_Hours']}</td>
-                    <td>{row['Status']}</td>
-                </tr>
-                """
-
-            attendance_html = ""
-
-            if attendance_table_rows:
-                attendance_html = f"""
-                <h3>🔄 Attendance Issues</h3>
-
-                <table border="1" cellpadding="6" cellspacing="0">
-
-                    <tr>
-                        <th>Date</th>
-                        <th>Platform</th>
-                        <th>Attendance</th>
-                        <th>Difference</th>
-                        <th>Status</th>
-                    </tr>
-
-                    {attendance_table_rows}
-
-                </table>
-                """
-
             # =====================================
-            # BUILD INCIDENT DETAILS
+            # BUILD INCIDENT DETAILS (para el asunto / lógica previa)
             # =====================================
 
             incident_details = []
@@ -1318,10 +1457,14 @@ Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row
             else:
                 subject = "Time Control Platform - Non Compliance Alert"
 
+            # =====================================
+            # GENERAR CUERPO CORPORATIVO
+            # =====================================
+
             body = generate_email_html(
                 employee_name=selected_notification_user,
-                compliance_html=compliance_html,
-                attendance_html=attendance_html,
+                compliance_df=compliance_df_for_email,
+                attendance_df=attendance_df_for_email,
                 start_date=start_date,
                 end_date=end_date,
             )
