@@ -40,7 +40,7 @@ def send_test_email(recipient, subject, body):
         msg["To"] = recipient
         msg["Subject"] = subject
 
-        msg.attach(MIMEText(body, "plain"))
+        msg.attach(MIMEText(body, "html"))
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -106,6 +106,58 @@ def get_novelty_status(user, target_date, df_novelties):
     if len(result) > 0:
         return result.iloc[0]["Tipo de Novedad"]
     return None
+
+
+def generate_email_html(
+    employee_name,
+    incident_text,
+    start_date,
+    end_date,
+):
+    return f"""
+    <html>
+
+    <body style="font-family: Segoe UI, Arial, sans-serif;">
+
+        <h2>
+            ⏱️ Time Control Platform
+        </h2>
+
+        <p>
+            Hello <b>{employee_name}</b>,
+        </p>
+
+        <p>
+            The platform identified incidents during the selected period.
+        </p>
+
+        <p>
+            <b>Period:</b>
+            {start_date}
+            -
+            {end_date}
+        </p>
+
+        <hr>
+
+        <pre>
+{incident_text}
+        </pre>
+
+        <hr>
+
+        <p>
+            Please review your records and make any necessary corrections.
+        </p>
+
+        <p>
+            Time Control Platform
+        </p>
+
+    </body>
+
+    </html>
+    """
 
 
 @st.cache_data
@@ -1129,21 +1181,12 @@ Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row
             else:
                 subject = "Time Control Platform - Non Compliance Alert"
 
-            body = f"""
-Hello {selected_notification_user},
-
-The Time Control Platform identified {len(user_incidents)} incident(s) during the selected period.
-
-{incident_text}
-
-Please review your records and make any necessary corrections.
-
-If you believe a record is incorrect, please contact your supervisor or the Data Team.
-
-Regards,
-
-Time Control Platform
-"""
+            body = generate_email_html(
+                employee_name=selected_notification_user,
+                incident_text=incident_text,
+                start_date=start_date,
+                end_date=end_date,
+            )
 
             if test_mode:
                 destination_email = TEST_EMAIL
