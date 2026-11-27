@@ -250,6 +250,52 @@ def generate_email_html(
     </div>
     """
 
+    # -------- KPI cards como tabla (fila horizontal garantizada) --------
+    kpi_html = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+        width:100%;
+        background-color:#ffffff;
+        border-bottom:1px solid #e2e8f0;
+        font-family:'Segoe UI','Roboto','Helvetica Neue',Arial,sans-serif;
+    ">
+        <tr>
+            <td width="33%" style="padding:24px 12px 24px 40px;">
+                <div style="
+                    background:#f0f4f8;
+                    border:1px solid #dbe3ee;
+                    border-radius:10px;
+                    padding:16px 18px;
+                ">
+                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{total_incidents}</div>
+                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Total Incidents</div>
+                </div>
+            </td>
+            <td width="33%" style="padding:24px 12px;">
+                <div style="
+                    background:#f0f4f8;
+                    border:1px solid #dbe3ee;
+                    border-radius:10px;
+                    padding:16px 18px;
+                ">
+                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{len(compliance_df)}</div>
+                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Compliance Issues</div>
+                </div>
+            </td>
+            <td width="33%" style="padding:24px 40px 24px 12px;">
+                <div style="
+                    background:#f0f4f8;
+                    border:1px solid #dbe3ee;
+                    border-radius:10px;
+                    padding:16px 18px;
+                ">
+                    <div style="font-size:26px; font-weight:700; color:#1a3a5c;">{len(attendance_df)}</div>
+                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#6a7e9e; margin-top:4px; font-weight:600;">Attendance Mismatches</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+    """
+
     # -------- HTML final --------
     return f"""<!DOCTYPE html>
 <html>
@@ -264,10 +310,11 @@ def generate_email_html(
             background-color:#eef2f6;
             line-height:1.5;
             color:#1a2a3a;
-            padding:32px 20px;
+            padding:16px;
         }}
         .email-container {{
-            max-width:1100px;
+            width:100%;
+            max-width:1200px;
             margin:0 auto;
             background:#ffffff;
             border-radius:14px;
@@ -281,20 +328,6 @@ def generate_email_html(
         .greeting h2 {{ font-size:20px; font-weight:600; margin-bottom:10px; }}
         .greeting p {{ font-size:14px; color:#3f5a78; line-height:1.65; margin-bottom:8px; }}
         .greeting .highlight {{ font-weight:600; color:#1a2a3a; }}
-
-        .kpi-row {{
-            display:flex; gap:16px; padding:24px 40px; background:#ffffff;
-            border-bottom:1px solid #e2e8f0; flex-wrap:wrap;
-        }}
-        .kpi-card {{
-            flex:1; min-width:160px; background:#f0f4f8; border:1px solid #dbe3ee;
-            border-radius:10px; padding:16px 18px;
-        }}
-        .kpi-value {{ font-size:26px; font-weight:700; color:#1a3a5c; }}
-        .kpi-label {{
-            font-size:11px; text-transform:uppercase; letter-spacing:0.8px;
-            color:#6a7e9e; margin-top:4px; font-weight:600;
-        }}
 
         .employee-section {{ padding:24px 40px 8px 40px; }}
         .employee-card {{
@@ -354,12 +387,11 @@ def generate_email_html(
         .footer-note {{ font-size:10px; opacity:0.65; margin-top:6px; }}
 
         @media (max-width:700px) {{
-            .greeting, .kpi-row, .employee-section, .notes-section, .email-footer {{
+            .greeting, .employee-section, .notes-section, .email-footer {{
                 padding-left:20px; padding-right:20px;
             }}
             .notes-section {{ margin-left:20px; margin-right:20px; }}
             .data-table th, .data-table td {{ padding:8px 10px; font-size:11px; }}
-            .kpi-card {{ min-width:100%; }}
         }}
     </style>
 </head>
@@ -385,20 +417,7 @@ def generate_email_html(
             </p>
         </div>
 
-        <div class="kpi-row">
-            <div class="kpi-card">
-                <div class="kpi-value">{total_incidents}</div>
-                <div class="kpi-label">Total Incidents</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value">{len(compliance_df)}</div>
-                <div class="kpi-label">Compliance Issues</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value">{len(attendance_df)}</div>
-                <div class="kpi-label">Attendance Mismatches</div>
-            </div>
-        </div>
+        {kpi_html}
 
         <div class="employee-section">
             <div class="employee-card">
@@ -1437,7 +1456,7 @@ if (
             st.text_input("SUBJECT", value=subject, disabled=True)
 
             st.markdown("### Email Preview (rendered)")
-            st.components.v1.html(body, height=900, scrolling=True)
+            st.components.v1.html(body, height=1000, scrolling=True)
 
             st.markdown("### Email Preview (raw HTML)")
             st.text_area("BODY (raw HTML)", value=body, height=250)
