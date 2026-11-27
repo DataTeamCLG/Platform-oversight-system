@@ -118,44 +118,84 @@ def generate_email_html(
     return f"""
     <html>
 
-    <body style="font-family: Segoe UI, Arial, sans-serif;">
+    <body style="
+        font-family: Segoe UI, Arial, sans-serif;
+        background-color:#f4f6f9;
+        padding:20px;
+    ">
 
-        <h2>
-            ⏱️ Time Control Platform
-        </h2>
+        <div style="
+            max-width:1000px;
+            margin:auto;
+            background:white;
+            border-radius:12px;
+            overflow:hidden;
+            box-shadow:0 2px 8px rgba(0,0,0,.12);
+        ">
 
-        <p>
-            Hello <b>{employee_name}</b>,
-        </p>
+            <div style="
+                background:#eef3f8;
+                padding:25px;
+                border-bottom:1px solid #dbe3ee;
+            ">
 
-        <p>
-            The platform identified incidents during the selected period.
-        </p>
+                <h1 style="
+                    margin:0;
+                    color:#1a2a3a;
+                    font-size:26px;
+                ">
+                    ⏱️ TIME CONTROL PLATFORM
+                </h1>
 
-        <p>
-            <b>Period:</b>
-            {start_date}
-            -
-            {end_date}
-        </p>
+                <p style="
+                    margin-top:8px;
+                    color:#4e6a87;
+                ">
+                    Incident Report
+                </p>
 
-        <hr>
+            </div>
 
-        {compliance_html}
+            <div style="
+                padding:25px;
+            ">
 
-        <br><br>
+                <h3>
+                    Hello {employee_name},
+                </h3>
 
-        {attendance_html}
+                <p>
+                    The platform identified incidents during the selected period.
+                </p>
 
-        <hr>
+                <p>
+                    <b>Period:</b>
+                    {start_date}
+                    -
+                    {end_date}
+                </p>
 
-        <p>
-            Please review your records and make any necessary corrections.
-        </p>
+                <hr>
 
-        <p>
-            Time Control Platform
-        </p>
+                {compliance_html}
+
+                <br><br>
+
+                {attendance_html}
+
+                <hr>
+
+                <p>
+                    Please review your records and make any necessary corrections.
+                </p>
+
+                <p>
+                    Time Control Platform
+                </p>
+
+            </div>
+
+        </div>
 
     </body>
 
