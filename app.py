@@ -110,7 +110,8 @@ def get_novelty_status(user, target_date, df_novelties):
 
 def generate_email_html(
     employee_name,
-    incident_text,
+    compliance_html,
+    attendance_html,
     start_date,
     end_date,
 ):
@@ -140,9 +141,11 @@ def generate_email_html(
 
         <hr>
 
-        <pre>
-{incident_text}
-        </pre>
+        {compliance_html}
+
+        <br><br>
+
+        {attendance_html}
 
         <hr>
 
@@ -1122,6 +1125,100 @@ if (
                 all_incidents["User"] == selected_notification_user
             ].sort_values("Date")
 
+            user_compliance_incidents = compliance_engine[
+                (
+                    compliance_engine["User"]
+                    == selected_notification_user
+                )
+                &
+                (
+                    compliance_engine["Status"].isin(
+                        [
+                            "❌ No registró tiempo",
+                            "❌ Horas insuficientes"
+                        ]
+                    )
+                )
+            ].copy()
+
+            compliance_table_rows = ""
+
+            for _, row in user_compliance_incidents.iterrows():
+                compliance_table_rows += f"""
+                <tr>
+                    <td>{row['Date']}</td>
+                    <td>{row['Hours Required']}</td>
+                    <td>{row['Hours Worked']}</td>
+                    <td>{row['Status']}</td>
+                </tr>
+                """
+
+            compliance_html = ""
+
+            if compliance_table_rows:
+                compliance_html = f"""
+                <h3>📋 Compliance Issues</h3>
+
+                <table border="1" cellpadding="6" cellspacing="0">
+
+                    <tr>
+                        <th>Date</th>
+                        <th>Required</th>
+                        <th>Worked</th>
+                        <th>Status</th>
+                    </tr>
+
+                    {compliance_table_rows}
+
+                </table>
+                """
+
+            user_attendance_incidents = attendance_comparison[
+                (
+                    attendance_comparison["User"]
+                    == selected_notification_user
+                )
+                &
+                (
+                    attendance_comparison["Status"]
+                    == "🚨 Review"
+                )
+            ].copy()
+
+            attendance_table_rows = ""
+
+            for _, row in user_attendance_incidents.iterrows():
+                attendance_table_rows += f"""
+                <tr>
+                    <td>{row['Date']}</td>
+                    <td>{row['Platform_Hours']}</td>
+                    <td>{row['Attendance_Hours']}</td>
+                    <td>{row['Difference_Hours']}</td>
+                    <td>{row['Status']}</td>
+                </tr>
+                """
+
+            attendance_html = ""
+
+            if attendance_table_rows:
+                attendance_html = f"""
+                <h3>🔄 Attendance Issues</h3>
+
+                <table border="1" cellpadding="6" cellspacing="0">
+
+                    <tr>
+                        <th>Date</th>
+                        <th>Platform</th>
+                        <th>Attendance</th>
+                        <th>Difference</th>
+                        <th>Status</th>
+                    </tr>
+
+                    {attendance_table_rows}
+
+                </table>
+                """
+
             # =====================================
             # BUILD INCIDENT DETAILS
             # =====================================
@@ -1183,7 +1280,8 @@ Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row
 
             body = generate_email_html(
                 employee_name=selected_notification_user,
-                incident_text=incident_text,
+                compliance_html=compliance_html,
+                attendance_html=attendance_html,
                 start_date=start_date,
                 end_date=end_date,
             )
