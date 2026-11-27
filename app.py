@@ -206,7 +206,51 @@ def generate_email_html(
         </div>
         """
 
-    # -------- HTML final (mismo template corporativo) --------
+    # -------- Header con estilos inline --------
+    header_html = f"""
+    <div style="
+        background-color:#1a3a5c;
+        color:#ffffff;
+        padding:32px 40px 28px 40px;
+        font-family:'Segoe UI','Roboto','Helvetica Neue',Arial,sans-serif;
+    ">
+        <div style="
+            font-size:24px;
+            font-weight:700;
+            letter-spacing:-0.3px;
+            color:#ffffff;
+        ">
+            ⏱️ TIME CONTROL PLATFORM
+            <span style="font-weight:400; opacity:0.85;">· INCIDENT REPORT</span>
+        </div>
+
+        <div style="
+            font-size:14px;
+            opacity:0.85;
+            margin-top:6px;
+            color:#ffffff;
+        ">
+            Time Tracking Compliance Report
+        </div>
+
+        <div style="margin-top:18px; font-size:12px; color:#ffffff;">
+            <span style="display:inline-block; margin-right:28px;">
+                <span style="text-transform:uppercase; letter-spacing:0.8px; opacity:0.75; font-size:11px;">Date</span>
+                <span style="font-weight:600; font-size:13px; margin-left:6px;">{pd.Timestamp.today().strftime('%m/%d/%Y')}</span>
+            </span>
+            <span style="display:inline-block; margin-right:28px;">
+                <span style="text-transform:uppercase; letter-spacing:0.8px; opacity:0.75; font-size:11px;">Period</span>
+                <span style="font-weight:600; font-size:13px; margin-left:6px;">{start_date} — {end_date}</span>
+            </span>
+            <span style="display:inline-block;">
+                <span style="text-transform:uppercase; letter-spacing:0.8px; opacity:0.75; font-size:11px;">Responsible</span>
+                <span style="font-weight:600; font-size:13px; margin-left:6px;">{employee_name}</span>
+            </span>
+        </div>
+    </div>
+    """
+
+    # -------- HTML final --------
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -230,20 +274,6 @@ def generate_email_html(
             overflow:hidden;
             box-shadow:0 6px 24px rgba(15,35,60,0.10);
         }}
-        .email-header {{
-            background:linear-gradient(135deg,#1a3a5c 0%,#2a5a8c 100%);
-            color:#ffffff;
-            padding:32px 40px 28px 40px;
-        }}
-        .logo {{ font-size:24px; font-weight:700; letter-spacing:-0.3px; }}
-        .logo span {{ font-weight:400; opacity:0.85; }}
-        .report-subtitle {{ font-size:14px; opacity:0.85; margin-top:6px; }}
-        .header-meta {{
-            margin-top:18px; display:flex; gap:28px; flex-wrap:wrap; font-size:12px;
-        }}
-        .header-meta div {{ display:flex; align-items:baseline; gap:6px; }}
-        .header-meta .k {{ text-transform:uppercase; letter-spacing:0.8px; opacity:0.75; font-size:11px; }}
-        .header-meta .v {{ font-weight:600; font-size:13px; }}
 
         .greeting {{
             padding:28px 40px; background:#f8fafc; border-bottom:1px solid #e2e8f0;
@@ -271,13 +301,6 @@ def generate_email_html(
             border:1px solid #e2e8f0; border-radius:12px;
             margin-bottom:24px; overflow:hidden; background:#ffffff;
         }}
-        .employee-header {{
-            background:#f0f4f8; padding:14px 22px; border-bottom:1px solid #e2e8f0;
-            display:flex; justify-content:space-between; align-items:center;
-            flex-wrap:wrap; gap:8px;
-        }}
-        .employee-name {{ font-size:15px; font-weight:700; color:#1a2a3a; }}
-        .employee-meta {{ font-size:12px; color:#6a7e9e; font-weight:500; }}
 
         .sub-block {{ padding:18px 22px 4px 22px; }}
         .sub-title {{
@@ -331,28 +354,19 @@ def generate_email_html(
         .footer-note {{ font-size:10px; opacity:0.65; margin-top:6px; }}
 
         @media (max-width:700px) {{
-            .email-header, .greeting, .kpi-row, .employee-section, .notes-section, .email-footer {{
+            .greeting, .kpi-row, .employee-section, .notes-section, .email-footer {{
                 padding-left:20px; padding-right:20px;
             }}
             .notes-section {{ margin-left:20px; margin-right:20px; }}
             .data-table th, .data-table td {{ padding:8px 10px; font-size:11px; }}
             .kpi-card {{ min-width:100%; }}
-            .header-meta {{ gap:14px; }}
         }}
     </style>
 </head>
 <body>
     <div class="email-container">
 
-        <div class="email-header">
-            <div class="logo">⏱️ TIME CONTROL PLATFORM <span>· INCIDENT REPORT</span></div>
-            <div class="report-subtitle">Time Tracking Compliance Report</div>
-            <div class="header-meta">
-                <div><span class="k">Date</span><span class="v">{pd.Timestamp.today().strftime('%m/%d/%Y')}</span></div>
-                <div><span class="k">Period</span><span class="v">{start_date} — {end_date}</span></div>
-                <div><span class="k">Responsible</span><span class="v">{employee_name}</span></div>
-            </div>
-        </div>
+        {header_html}
 
         <div class="greeting">
             <h2>Hello {employee_name.split()[0] if employee_name.split() else "Team"},</h2>
@@ -388,10 +402,6 @@ def generate_email_html(
 
         <div class="employee-section">
             <div class="employee-card">
-                <div class="employee-header">
-                    <div class="employee-name">👤 {employee_name}</div>
-                    <div class="employee-meta">{total_incidents} incidents</div>
-                </div>
                 {compliance_block}
                 {attendance_block}
             </div>
@@ -1376,10 +1386,6 @@ if (
                         cc_list.append(value)
             cc_list = sorted(list(set(cc_list)))
 
-            user_incidents = all_incidents[
-                all_incidents["User"] == selected_notification_user
-            ].sort_values("Date")
-
             # =====================================
             # DATAFRAMES FILTRADOS PARA EL TEMPLATE
             # =====================================
@@ -1397,60 +1403,6 @@ if (
                 (attendance_comparison["User"] == selected_notification_user)
                 & (attendance_comparison["Status"] == "🚨 Review")
             ].copy()
-
-            # =====================================
-            # BUILD INCIDENT DETAILS (para el asunto / lógica previa)
-            # =====================================
-
-            incident_details = []
-
-            for _, row in user_incidents.iterrows():
-                incident_date = row["Date"]
-
-                if row["Incident_Type"] == "🚨 Compliance Issue":
-                    compliance_row = compliance_engine[
-                        (compliance_engine["User"] == selected_notification_user)
-                        & (
-                            pd.to_datetime(compliance_engine["Date"])
-                            == pd.to_datetime(incident_date)
-                        )
-                    ]
-
-                    if len(compliance_row) > 0:
-                        compliance_row = compliance_row.iloc[0]
-                        incident_details.append(
-                            f"""
-Date: {incident_date}
-Type: Compliance
-Hours Worked: {compliance_row['Hours Worked']}
-Hours Required: {compliance_row['Hours Required']}
-Issue: {compliance_row['Status']}
-"""
-                        )
-
-                elif row["Incident_Type"] == "🚨 Attendance Mismatch":
-                    attendance_row = attendance_comparison[
-                        (attendance_comparison["User"] == selected_notification_user)
-                        & (
-                            pd.to_datetime(attendance_comparison["Date"])
-                            == pd.to_datetime(incident_date)
-                        )
-                    ]
-
-                    if len(attendance_row) > 0:
-                        attendance_row = attendance_row.iloc[0]
-                        incident_details.append(
-                            f"""
-Date: {incident_date}
-Type: Attendance
-Attendance Hours: {attendance_row['Attendance_Hours']}
-Platform Hours: {attendance_row['Platform_Hours']}
-Difference Hours: {attendance_row['Difference_Hours']}
-Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row.index else '🚨 Review'}
-"""
-                        )
-
-            incident_text = "\n----------------------------------------\n".join(incident_details)
 
             if test_mode:
                 subject = "[TEST] Time Control Platform - Non Compliance Alert"
@@ -1483,7 +1435,12 @@ Issue: {attendance_row['Incident_Status'] if 'Incident_Status' in attendance_row
 
             st.text_area("CC", value="; ".join(cc_list), height=80, disabled=True)
             st.text_input("SUBJECT", value=subject, disabled=True)
-            st.text_area("BODY", value=body, height=250)
+
+            st.markdown("### Email Preview (rendered)")
+            st.components.v1.html(body, height=900, scrolling=True)
+
+            st.markdown("### Email Preview (raw HTML)")
+            st.text_area("BODY (raw HTML)", value=body, height=250)
 
             st.divider()
 
